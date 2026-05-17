@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '../lib/supabase';
 import {
-  ANALYSIS_MODEL,
-  getOpenAIClient,
+  GPT4_MODEL,
+  getGPT4Client,
 } from '../lib/openai';
 import {
   analysisResultSchema,
@@ -42,10 +42,21 @@ async function analyseCvAgainstJob(
     throw new Error(error.message);
   }
 
+  // Write latest scores back to profile so dashboard reflects them
+  const skillMatch = Math.round(
+    (result.presentKeywords.length /
+      Math.max(1, result.presentKeywords.length + result.missingKeywords.length)) *
+      100
+  );
+  await supabase
+    .from('profiles')
+    .update({ ats_score: result.matchScore, skill_match: skillMatch })
+    .eq('id', userId);
+
   return {
     id: data.id,
     jobId: data.job_id,
-    model: ANALYSIS_MODEL,
+    model: GPT4_MODEL,
     result,
     createdAt: data.created_at,
   };
@@ -54,13 +65,12 @@ async function analyseCvAgainstJob(
 async function generateAnalysis(
   input: AnalysisRequestInput
 ): Promise<AnalysisResult> {
-  const openai = getOpenAIClient();
+  const openai = getGPT4Client();
 
   const completion = await openai.chat.completions.create({
-    model: ANALYSIS_MODEL,
+    model: GPT4_MODEL,
     temperature: 0.2,
     max_tokens: 1800,
-    response_format: { type: 'json_object' },
     messages: [
       {
         role: 'system',
@@ -106,9 +116,10 @@ Rules:
 - Use "Strong Match" for 80+, "Close Match" for 55-79, and "Not Ready Yet" for below 55.
 - Choose cuppyState based on the result: celebrate/happy for strong, judgy/thinking for close or weak.
 - Include 3 strengths when possible.
-- Include 3 gaps with concrete fixes.
-- Include 2-4 CV bullet rewrites when possible.
+- Include 3 gaps with concrete fixes. If the CV already has a skill, do NOT say the candidate lacks it.
+- Include 2-4 CV bullet rewrites in cvFixes — ONLY rewrite vague or passive experience/project bullet points. NEVER include technical skill listings (e.g. "Languages: Go, Python") as cvFixes originals — those are already correct format.
 - Keep rewritten bullets specific and metric-oriented, but do not invent employer names.
+- If the CV mentions a language/tool (e.g. "Go", "Python"), do NOT list it as a gap.
 
 CV:
 ${input.cvText}
@@ -120,9 +131,10 @@ ${input.jobDescription}
 
 function parseJsonObject(content: string): unknown {
   try {
-    return JSON.parse(content);
+    const trimmed = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+    return JSON.parse(trimmed);
   } catch {
-    throw new Error('Failed to parse OpenAI analysis JSON.');
+    throw new Error('Failed to parse AI analysis JSON.');
   }
 }
 

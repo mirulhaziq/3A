@@ -1,0 +1,11 @@
+meta {
+  name: Search External Jobs Direct
+  type: http
+  seq: 8
+}
+
+get {
+  url: http://localhost:3001/api/v1/jobs/external/search?query=software%20engineer%20in%20Malaysia&country=my&datePosted=month&numPages=1
+  body: none
+  auth: none
+}

@@ -71,8 +71,8 @@ const RADAR_DATA = [
 
 function SkillRadarChart() {
   return (
-    <div style={{ width: '100%', height: 260 }}>
-      <ResponsiveContainer width="100%" height="100%">
+    <div style={{ width: '100%', height: 260, minWidth: 0 }}>
+      <ResponsiveContainer width="100%" height={260} debounce={50}>
         <RadarChart data={RADAR_DATA} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
           <PolarGrid stroke="#E8E0D0" />
           <PolarAngleAxis

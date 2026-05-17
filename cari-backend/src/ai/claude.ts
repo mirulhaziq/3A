@@ -3,10 +3,9 @@ import type { ChatCompletionMessageParam } from 'openai/resources';
 import { Response } from 'express';
 import { retry } from '../lib/retry';
 import { logger } from '../lib/logger';
+import { GPT4_MODEL, getGPT4Client } from '../lib/openai';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-
-const MODEL = 'gpt-5.4';
+const MODEL = GPT4_MODEL;
 
 // ─── Unified types ────────────────────────────────────────────────────────────
 // Exported so callers never need to import from @anthropic-ai/sdk.
@@ -101,6 +100,7 @@ async function streamToSSE(
   system: string,
   tools?: Tool[]
 ): Promise<void> {
+  const openai = getGPT4Client();
   const stream = await retry(() =>
     openai.chat.completions.create({
       model: MODEL,
@@ -140,6 +140,7 @@ async function callClaude(
   tools?: Tool[],
   maxTokens: number = 4096
 ): Promise<AIMessage> {
+  const openai = getGPT4Client();
   return retry(async () => {
     const response = await openai.chat.completions.create({
       model: MODEL,
@@ -160,6 +161,7 @@ async function callClaudeWithVision(
   prompt: string,
   maxTokens: number = 1024
 ): Promise<string> {
+  const openai = getGPT4Client();
   return retry(async () => {
     const response = await openai.chat.completions.create({
       model: MODEL,
@@ -187,4 +189,4 @@ async function callClaudeWithVision(
   });
 }
 
-export { openai, MODEL, streamToSSE, callClaude, callClaudeWithVision };
+export { MODEL, streamToSSE, callClaude, callClaudeWithVision };

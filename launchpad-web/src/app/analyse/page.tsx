@@ -20,19 +20,74 @@ import CuppyImage from '@/components/CuppyImage';
 import PrimaryButton from '@/components/PrimaryButton';
 import SecondaryButton from '@/components/SecondaryButton';
 import { MOCK_ANALYSIS } from '@/lib/mock-data';
-import { cariApi } from '@/lib/cari-api';
+import { cariApi, type UserProfileResponse } from '@/lib/cari-api';
 import type { AnalysisResult } from '@/types';
 
 type PageState = 'input' | 'loading' | 'results';
+
+function buildCvText(profile: UserProfileResponse): string {
+  const pd = profile.profileData as Record<string, unknown>;
+  const lines: string[] = [];
+
+  if (profile.fullName) lines.push(`Name: ${profile.fullName}`);
+  if (profile.targetRole) lines.push(`Target Role: ${profile.targetRole}`);
+
+  const summary = pd.summary as string | undefined;
+  if (summary) lines.push(`Summary: ${summary}`);
+
+  const skills = pd.skills as { languages?: string[]; frameworks?: string[]; tools?: string[]; soft?: string[] } | undefined;
+  if (skills) {
+    if (skills.languages?.length) lines.push(`Languages: ${skills.languages.join(', ')}`);
+    if (skills.frameworks?.length) lines.push(`Frameworks: ${skills.frameworks.join(', ')}`);
+    if (skills.tools?.length) lines.push(`Tools & Platforms: ${skills.tools.join(', ')}`);
+    if (skills.soft?.length) lines.push(`Soft Skills: ${skills.soft.join(', ')}`);
+  }
+
+  const experience = pd.experience as Array<{ company?: string; role?: string; type?: string; dateRange?: string; bullets?: string[] }> | undefined;
+  if (experience?.length) {
+    lines.push('Experience:');
+    experience.forEach(exp => {
+      lines.push(`  ${exp.role ?? ''} at ${exp.company ?? ''} (${exp.dateRange ?? ''})`);
+      exp.bullets?.forEach(b => lines.push(`    • ${b}`));
+    });
+  }
+
+  const projects = pd.projects as Array<{ name?: string; description?: string; tech?: string[]; bullets?: string[] }> | undefined;
+  if (projects?.length) {
+    lines.push('Projects:');
+    projects.forEach(p => {
+      if (!p.name) return;
+      lines.push(`  ${p.name}${p.tech?.length ? ` (${p.tech.join(', ')})` : ''}`);
+      if (p.description) lines.push(`    ${p.description}`);
+      p.bullets?.forEach(b => lines.push(`    • ${b}`));
+    });
+  }
+
+  const education = pd.education as Array<{ institution?: string; degree?: string; field?: string; grade?: string; dateRange?: string }> | undefined;
+  if (education?.length) {
+    lines.push('Education:');
+    education.forEach(e => {
+      lines.push(`  ${e.degree ?? ''} in ${e.field ?? ''} — ${e.institution ?? ''} (${e.dateRange ?? ''}) ${e.grade ? `| ${e.grade}` : ''}`);
+    });
+  }
+
+  const certs = pd.certifications as Array<{ name?: string; issuer?: string; date?: string }> | undefined;
+  if (certs?.length) {
+    lines.push('Certifications: ' + certs.map(c => `${c.name ?? ''}${c.issuer ? ` (${c.issuer})` : ''}`).filter(Boolean).join(', '));
+  }
+
+  return lines.join('\n') || 'No profile data available.';
+}
 
 export default function AnalysePage() {
   const router = useRouter();
   const [pageState, setPageState] = useState<PageState>('input');
   const [jdTab, setJdTab] = useState<'screenshot' | 'paste'>('paste');
   const [jdText, setJdText] = useState('');
-  const [jobTitle, setJobTitle] = useState('Senior Frontend Engineer');
+  const [jobTitle, setJobTitle] = useState('');
   const [jobCompany, setJobCompany] = useState('');
   const [cvFileName, setCvFileName] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfileResponse | null>(null);
   const [activeResultTab, setActiveResultTab] = useState<
     'strengths' | 'gaps' | 'cvfixes' | 'keywords'
   >('strengths');
@@ -46,18 +101,11 @@ export default function AnalysePage() {
   const cvFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Load cvFileName from localStorage
-    try {
-      const stored = localStorage.getItem('lp_user');
-      if (stored) {
-        const user = JSON.parse(stored) as { cvFileName?: string | null };
-        if (user.cvFileName) {
-          setCvFileName(user.cvFileName);
-        }
-      }
-    } catch {
-      // ignore parse errors
-    }
+    // Load real user profile for CV text
+    cariApi.getProfile().then(({ profile }) => {
+      setUserProfile(profile);
+      if (!cvFileName && profile.fullName) setCvFileName(`${profile.fullName.replace(/\s+/g, '_')}_CV.pdf`);
+    }).catch(() => {});
 
     // Check URL param ?source=extension
     const params = new URLSearchParams(window.location.search);
@@ -66,9 +114,7 @@ export default function AnalysePage() {
         const pendingJob = localStorage.getItem('lp_pending_job');
         if (pendingJob) {
           const job = JSON.parse(pendingJob) as { description?: string; title?: string; company?: string };
-          if (job.description) {
-            setJdText(job.description);
-          }
+          if (job.description) setJdText(job.description);
           if (job.title) setJobTitle(job.title);
           if (job.company) setJobCompany(job.company);
           localStorage.removeItem('lp_pending_job');
@@ -79,13 +125,14 @@ export default function AnalysePage() {
     }
   }, []);
 
-  async function handleAnalyse() {
-    const fallbackCv =
-      'Cari profile resume summary for a software engineering candidate with TypeScript, React, Express.js, Supabase, PostgreSQL, Git, GitHub, Docker, REST APIs, project experience, internship experience, and production collaboration.';
+  async function runAnalysis() {
+    const cvText = userProfile
+      ? buildCvText(userProfile)
+      : 'Software engineering candidate with TypeScript, React, Node.js, REST APIs, Git, Docker experience.';
     const safeJobDescription =
       jdText.trim().length >= 80
         ? jdText.trim()
-        : `${jobTitle} role at ${jobCompany || 'the company'}. ${jdText.trim()} Looking for a candidate with strong software engineering fundamentals, backend APIs, databases, teamwork, deployment experience, and clear communication.`;
+        : `${jobTitle || 'Software Engineer'} role at ${jobCompany || 'the company'}. ${jdText.trim()} Looking for a candidate with strong software engineering fundamentals, backend APIs, databases, teamwork, deployment experience, and clear communication.`;
 
     setPageState('loading');
     setLoadingProgress(0);
@@ -111,7 +158,7 @@ export default function AnalysePage() {
 
     try {
       const data = await cariApi.analyse({
-        cvText: fallbackCv,
+        cvText,
         jobDescription: safeJobDescription,
       });
       const nextAnalysis = data.analysis.result;
@@ -484,7 +531,7 @@ export default function AnalysePage() {
             marginBottom: 32,
           }}
         >
-          <PrimaryButton fullWidth onClick={handleAnalyse}>
+          <PrimaryButton fullWidth onClick={runAnalysis}>
             <BarChart2 size={18} />
             Analyse Compatibility
           </PrimaryButton>
@@ -528,7 +575,7 @@ export default function AnalysePage() {
           Analysing your fit...
         </p>
         <p style={{ fontSize: 14, color: '#6B6B6B', margin: 0 }}>
-          Senior Frontend Engineer
+          {jobTitle || 'Analysing role...'}
         </p>
 
         {/* Progress bar */}
@@ -606,27 +653,53 @@ export default function AnalysePage() {
         }}
       >
         <span style={{ fontSize: 20, fontWeight: 700, color: '#1A1A1A' }}>Results</span>
-        <button
-          onClick={() => {
-            setPageState('input');
-            setScoreCount(0);
-            setVerdictText('');
-            setActiveResultTab('strengths');
-          }}
-          style={{
-            border: '1px solid #E8E0D0',
-            borderRadius: 9999,
-            padding: '6px 14px',
-            fontSize: 13,
-            fontWeight: 600,
-            color: '#1A1A1A',
-            backgroundColor: '#FFFFFF',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          New Analysis
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => {
+              setScoreCount(0);
+              setVerdictText('');
+              setActiveResultTab('strengths');
+              void runAnalysis();
+            }}
+            style={{
+              border: 'none',
+              borderRadius: 9999,
+              padding: '6px 14px',
+              fontSize: 13,
+              fontWeight: 600,
+              color: '#1A1A1A',
+              backgroundColor: '#FFC800',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            ↻ Redo
+          </button>
+          <button
+            onClick={() => {
+              setPageState('input');
+              setJdText('');
+              setJobTitle('');
+              setJobCompany('');
+              setScoreCount(0);
+              setVerdictText('');
+              setActiveResultTab('strengths');
+            }}
+            style={{
+              border: '1px solid #E8E0D0',
+              borderRadius: 9999,
+              padding: '6px 14px',
+              fontSize: 13,
+              fontWeight: 600,
+              color: '#1A1A1A',
+              backgroundColor: '#FFFFFF',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            New Job
+          </button>
+        </div>
       </div>
 
       {/* JOB CONTEXT LINE */}

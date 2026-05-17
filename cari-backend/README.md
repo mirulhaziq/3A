@@ -53,6 +53,7 @@ Current working requests:
 - `Companies / Upsert My Company Direct`
 - `Companies / Update My Company Direct`
 - `Jobs / List Jobs Direct`
+- `Jobs / Search External Jobs Direct`
 - `Jobs / Create Job Direct`
 - `Jobs / Get Job Detail Direct`
 - `Jobs / Update Job Direct`
@@ -76,6 +77,8 @@ If an auth request says `Invalid URL`, use the matching `Direct` auth request. T
 Profile requests require `authToken`. `Delete My Profile Direct` removes the Supabase Auth user, so use it only for disposable test accounts.
 
 Job creation requires a company account. Register with `Auth / Register - Company Direct`, login, set `authToken`, then run `Companies / Upsert My Company Direct` before `Jobs / Create Job Direct`. Copy the created job `data.job.id` into Bruno's `jobId` variable for detail, update, and delete requests.
+
+External job search uses RapidAPI JSearch and does not require a bearer token. Put a rotated key in `.env` as `RAPIDAPI_KEY`, then run `Jobs / Search External Jobs Direct`.
 
 Analysis requires a job seeker account and `OPENAI_API_KEY` in `.env`. Register/login as a job seeker, set `authToken`, then run `Analysis / Analyse CV Against JD Direct`.
 

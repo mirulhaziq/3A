@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Rocket, X, FileUp, FileCheck, Plus, Check } from 'lucide-react';
 import CuppyImageComponent from '@/components/CuppyImage';
+import { MOCK_PROFILE, type UserProfile } from '@/lib/mock-data';
+import { cariApi, type GeneratedResume, type GitHubSnapshot } from '@/lib/cari-api';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -38,6 +40,15 @@ const ROLE_SUGGESTIONS = [
   'Mobile Developer',
 ];
 
+function mapTargetRoleToRoadmapRole(targetRole: string): 'frontend' | 'backend' | 'data' | 'devops' | 'ai' {
+  const lower = targetRole.toLowerCase();
+  if (lower.includes('frontend') || lower.includes('mobile') || lower.includes('ui') || lower.includes('ux')) return 'frontend';
+  if (lower.includes('data') || lower.includes('analyst') || lower.includes('analytics')) return 'data';
+  if (lower.includes('devops') || lower.includes('cloud') || lower.includes('sre') || lower.includes('security') || lower.includes('infra')) return 'devops';
+  if (lower.includes('ai') || lower.includes('ml') || lower.includes('machine') || lower.includes('deep learning')) return 'ai';
+  return 'backend'; // default: backend / software engineering
+}
+
 const STEPS = [
   { id: 1, label: 'Welcome' },
   { id: 2, label: 'Identity' },
@@ -48,6 +59,194 @@ const STEPS = [
 ];
 
 // ─── Component ───────────────────────────────────────────────────────────────
+
+async function buildProfileDataFromOnboarding(
+  data: OnboardingData,
+  setStatus: (status: string | null) => void
+): Promise<UserProfile & {
+  githubSnapshot?: GitHubSnapshot;
+  parsedResume?: GeneratedResume;
+  onboardingSkills: string[];
+  cvFileName: string | null;
+}> {
+  let parsedResume: GeneratedResume | undefined;
+  let githubSnapshot: GitHubSnapshot | undefined;
+
+  if (data.cvFile) {
+    setStatus('Parsing your resume');
+    parsedResume = (await cariApi.parseResume(data.cvFile)).parsed.resume;
+  }
+
+  const githubUsername = normalizeGitHubUsername(data.githubUsername);
+  if (githubUsername) {
+    setStatus('Scanning your GitHub');
+    githubSnapshot = (
+      await cariApi.scrapeGitHub({
+        username: githubUsername,
+        includeForks: false,
+        maxRepos: 30,
+      })
+    ).github.snapshot;
+  }
+
+  setStatus('Saving your profile');
+  const resumeProfile = parsedResume
+    ? mapGeneratedResumeToProfile(parsedResume)
+    : MOCK_PROFILE;
+  const githubProfile = githubSnapshot
+    ? applyGitHubSnapshotToProfile(resumeProfile, githubSnapshot)
+    : resumeProfile;
+
+  return {
+    ...githubProfile,
+    personal: {
+      ...githubProfile.personal,
+      fullName: data.name.trim() || githubProfile.personal.fullName,
+      targetRole: data.targetRole || githubProfile.personal.targetRole,
+      github: githubUsername ? `github.com/${githubUsername}` : githubProfile.personal.github,
+    },
+    targetRole: data.targetRole || githubProfile.targetRole,
+    onboarded: true,
+    atsScore: parsedResume ? Math.max(githubProfile.atsScore, 82) : githubProfile.atsScore,
+    skillMatch: Math.min(
+      100,
+      Math.max(githubProfile.skillMatch, data.skills.length * 6)
+    ),
+    skills: {
+      ...githubProfile.skills,
+      languages: mergeUnique([...githubProfile.skills.languages, ...data.skills]),
+    },
+    githubSnapshot,
+    parsedResume,
+    onboardingSkills: data.skills,
+    cvFileName: data.cvFileName,
+  };
+}
+
+function mapGeneratedResumeToProfile(resume: GeneratedResume): UserProfile {
+  return {
+    ...MOCK_PROFILE,
+    personal: {
+      ...MOCK_PROFILE.personal,
+      fullName: resume.personal.fullName || MOCK_PROFILE.personal.fullName,
+      location: resume.personal.location ?? MOCK_PROFILE.personal.location,
+      phone: resume.personal.phone ?? MOCK_PROFILE.personal.phone,
+      email: resume.personal.email ?? MOCK_PROFILE.personal.email,
+      linkedin: resume.personal.linkedin ?? MOCK_PROFILE.personal.linkedin,
+      github: resume.personal.github ?? MOCK_PROFILE.personal.github,
+      targetRole: resume.metadata.targetRole ?? MOCK_PROFILE.personal.targetRole,
+    },
+    targetRole: resume.metadata.targetRole ?? MOCK_PROFILE.targetRole,
+    summary: resume.summary || MOCK_PROFILE.summary,
+    skills: {
+      languages: mergeUnique(resume.skills.languages),
+      frameworks: mergeUnique(resume.skills.frameworks),
+      tools: mergeUnique(resume.skills.toolsAndPlatforms),
+      soft: mergeUnique(resume.skills.softSkills),
+    },
+    projects: resume.projects.map((project, index) => ({
+      id: `resume-project-${index}`,
+      name: project.name,
+      description: project.description ?? 'Resume project imported into Cari.',
+      tech: project.techStack,
+      showOnResume: true,
+      bullets: project.bullets,
+      date: '',
+      url: project.repoUrl?.replace(/^https?:\/\//i, '') ?? '',
+    })),
+    experience: resume.experience.map((experience, index) => ({
+      id: `resume-experience-${index}`,
+      role: experience.role,
+      company: experience.company,
+      type: experience.type ?? '',
+      dateRange: [experience.startDate, experience.endDate].filter(Boolean).join(' - '),
+      bullets: experience.bullets,
+    })),
+    education: resume.education.map((education) => ({
+      institution: education.institution,
+      degree: education.degree ?? '',
+      field: education.field ?? '',
+      dateRange: [education.startDate, education.endDate].filter(Boolean).join(' - '),
+      grade: education.grade ?? '',
+    })),
+    certifications: resume.certifications.map((certification) => ({
+      name: certification.name,
+      issuer: certification.issuer ?? '',
+      date: certification.date ?? '',
+    })),
+    awards: resume.awards.map((award) => ({
+      name: award.title,
+      issuer: award.issuer ?? '',
+      date: award.year ?? '',
+    })),
+    extracurricular: resume.extracurricular.map((item) => ({
+      name: item.title,
+      organization: item.organization ?? '',
+      date: item.date ?? '',
+    })),
+  };
+}
+
+function applyGitHubSnapshotToProfile(
+  profile: UserProfile,
+  snapshot: GitHubSnapshot
+): UserProfile {
+  const githubProjects = snapshot.topRepositories.slice(0, 6).map((repo) => ({
+    id: `github-${repo.id}`,
+    name: repo.name,
+    description: repo.description ?? 'Public GitHub project imported into Cari.',
+    tech: mergeUnique([
+      ...(repo.primaryLanguage ? [repo.primaryLanguage] : []),
+      ...repo.topics.slice(0, 5),
+    ]),
+    showOnResume: true,
+    bullets: [
+      repo.description ?? `Built and maintained ${repo.name} as a public repository.`,
+      `Repository shows ${repo.stars} stars, ${repo.forks} forks, and public project activity.`,
+    ],
+    date: new Date(repo.updatedAt).getFullYear().toString(),
+    url: repo.url.replace(/^https?:\/\//i, ''),
+  }));
+  const existingProjectIds = new Set(profile.projects.map((project) => project.id));
+
+  return {
+    ...profile,
+    personal: {
+      ...profile.personal,
+      github: `github.com/${snapshot.username}`,
+    },
+    skills: {
+      ...profile.skills,
+      languages: mergeUnique([
+        ...profile.skills.languages,
+        ...snapshot.languages.map((language) => language.name),
+      ]),
+      tools: mergeUnique([...profile.skills.tools, 'GitHub']),
+      frameworks: mergeUnique([
+        ...profile.skills.frameworks,
+        ...snapshot.topics.map((topic) => topic.name).slice(0, 8),
+      ]),
+    },
+    projects: [
+      ...githubProjects.filter((project) => !existingProjectIds.has(project.id)),
+      ...profile.projects,
+    ],
+  };
+}
+
+function normalizeGitHubUsername(value: string): string {
+  return value
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .replace(/^github\.com\//i, '')
+    .split(/[/?#]/)[0]
+    .trim();
+}
+
+function mergeUnique(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -66,6 +265,9 @@ export default function OnboardingPage() {
   const [customSkill, setCustomSkill] = useState('');
   const [showXpBadge, setShowXpBadge] = useState(false);
   const [showCompletion, setShowCompletion] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [completionStatus, setCompletionStatus] = useState<string | null>(null);
+  const [completionError, setCompletionError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -89,10 +291,41 @@ export default function OnboardingPage() {
     }
   };
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
+    if (isCompleting) return;
+    setIsCompleting(true);
+    setCompletionError(null);
     document.cookie = 'lp_onboarded=true; path=/';
     localStorage.setItem('lp_onboarded', 'true');
     localStorage.setItem('lp_user', JSON.stringify(data));
+    try {
+      const profileData = await buildProfileDataFromOnboarding(
+        data,
+        setCompletionStatus
+      );
+      const roadmapRole = mapTargetRoleToRoadmapRole(profileData.targetRole ?? '');
+      await cariApi.updateProfile({
+        fullName: profileData.personal.fullName,
+        targetRole: profileData.targetRole,
+        profileData: {
+          ...(profileData as unknown as Record<string, unknown>),
+          roadmapRole,
+        },
+        onboarded: true,
+        xp: profileData.xp,
+        streak: profileData.streak,
+        level: String(profileData.level),
+        atsScore: profileData.atsScore,
+        skillMatch: profileData.skillMatch,
+      });
+      setCompletionStatus('Profile synced to Cari');
+    } catch (error) {
+      setCompletionError(
+        error instanceof Error
+          ? `Saved locally, but backend sync failed: ${error.message}`
+          : 'Saved locally, but backend sync failed.'
+      );
+    }
     setShowCompletion(true);
     setTimeout(() => router.push('/dashboard'), 1500);
   };
@@ -747,11 +980,19 @@ export default function OnboardingPage() {
               </div>
               <div className="mt-8 flex gap-3 items-center">
                 <OutlinedButton onClick={handleBack}>Back</OutlinedButton>
-                <YellowButton onClick={handleComplete}>Let&apos;s go! →</YellowButton>
+                <YellowButton onClick={handleComplete}>
+                  {isCompleting ? 'Setting up...' : "Let's go! →"}
+                </YellowButton>
               </div>
+              {(completionStatus || completionError) && (
+                <p className="mt-3 text-[13px] text-[#6B6B6B]">
+                  {completionError ?? completionStatus}
+                </p>
+              )}
               <button
                 type="button"
                 onClick={handleComplete}
+                disabled={isCompleting}
                 className="mt-3 text-[13px] text-[#ABABAB] cursor-pointer"
               >
                 Skip for now →
@@ -795,11 +1036,17 @@ export default function OnboardingPage() {
                   )}
                 </div>
                 <YellowButton onClick={handleComplete} fullWidth className="mt-6">
-                  Let&apos;s go! →
+                  {isCompleting ? 'Setting up...' : "Let's go! →"}
                 </YellowButton>
+                {(completionStatus || completionError) && (
+                  <p className="mt-3 text-center text-[13px] text-[#6B6B6B]">
+                    {completionError ?? completionStatus}
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={handleComplete}
+                  disabled={isCompleting}
                   className="block w-full text-center text-[#ABABAB] mt-3 text-sm cursor-pointer"
                 >
                   Skip for now →

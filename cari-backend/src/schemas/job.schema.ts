@@ -25,6 +25,15 @@ const listJobsQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
+const externalJobSearchQuerySchema = z.object({
+  query: z.string().trim().min(2).max(200).default('software engineer in Malaysia'),
+  country: z.string().trim().length(2).default('my'),
+  datePosted: z
+    .enum(['all', 'today', '3days', 'week', 'month'])
+    .default('month'),
+  numPages: z.coerce.number().int().min(1).max(5).default(1),
+});
+
 const companyPayloadSchema = z
   .object({
     name: z.string().min(1).max(160),
@@ -83,6 +92,7 @@ const updateJobSchema = jobPayloadBaseSchema
 export {
   companyPayloadSchema,
   createJobSchema,
+  externalJobSearchQuerySchema,
   listJobsQuerySchema,
   updateCompanySchema,
   updateJobSchema,
@@ -90,6 +100,9 @@ export {
 };
 export type CompanyPayloadInput = z.infer<typeof companyPayloadSchema>;
 export type CreateJobInput = z.infer<typeof createJobSchema>;
+export type ExternalJobSearchQueryInput = z.infer<
+  typeof externalJobSearchQuerySchema
+>;
 export type ListJobsQueryInput = z.infer<typeof listJobsQuerySchema>;
 export type UpdateCompanyInput = z.infer<typeof updateCompanySchema>;
 export type UpdateJobInput = z.infer<typeof updateJobSchema>;

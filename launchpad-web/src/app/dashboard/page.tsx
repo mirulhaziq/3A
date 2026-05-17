@@ -85,29 +85,30 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string }> 
   OFFER:     { label: 'Offer',      color: '#2E7D32', bg: '#E8F9D9' },
 };
 
-const INITIAL_QUESTS: Quest[] = [
-  {
-    id: '1',
-    label: 'Apply to 3 Junior Developer roles',
-    sub: '2/3 applications submitted',
-    xp: 50,
-    completed: true,
-  },
-  {
-    id: '2',
-    label: 'Practice 1 Leetcode problem',
-    sub: 'Recommended: Array manipulation',
-    xp: 30,
-    completed: false,
-  },
-  {
-    id: '3',
-    label: 'Update README on top project',
-    sub: 'Focus on the technical stack section',
-    xp: 70,
-    completed: false,
-  },
+const QUEST_POOL: Omit<Quest, 'completed'>[] = [
+  { id: 'apply3', label: 'Apply to 3 job openings', sub: 'Include your tailored resume', xp: 100 },
+  { id: 'leetcode', label: 'Solve 1 LeetCode problem', sub: 'Focus on arrays or strings', xp: 50 },
+  { id: 'readme', label: 'Update README on a GitHub project', sub: 'Add screenshots and tech stack', xp: 70 },
+  { id: 'linkedin', label: 'Connect with 3 engineers on LinkedIn', sub: 'Personalise each message', xp: 60 },
+  { id: 'roadmap2', label: 'Complete 2 roadmap skills', sub: 'Keep your learning streak going', xp: 80 },
+  { id: 'cover', label: 'Write a tailored cover letter', sub: 'Use the job description keywords', xp: 90 },
+  { id: 'portfolio', label: 'Push a new project to GitHub', sub: 'Include a proper README', xp: 120 },
+  { id: 'revise', label: 'Revise your resume summary', sub: 'Tailor it to your target role', xp: 50 },
+  { id: 'mock', label: 'Do a mock interview session', sub: 'Record yourself and review', xp: 80 },
+  { id: 'review', label: 'Review 1 peer project on GitHub', sub: 'Leave constructive feedback', xp: 40 },
 ];
+
+function getDailyQuests(): Quest[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const seed = today.split('-').reduce((acc, n) => acc + parseInt(n, 10), 0);
+  const indices = [(seed % 10), ((seed + 3) % 10), ((seed + 7) % 10)];
+  return indices.map((i) => ({ ...QUEST_POOL[i]!, completed: false }));
+}
+
+interface PersistedQuests {
+  date: string;
+  items: Quest[];
+}
 
 const SKILL_PHASES = [
   { name: 'Foundation', done: 12, total: 12 },
@@ -174,7 +175,7 @@ function QuestNode({ quest, isNext, onToggle }: { quest: Quest; isNext: boolean;
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [quests, setQuests] = useState<Quest[]>(INITIAL_QUESTS);
+  const [quests, setQuests] = useState<Quest[]>(getDailyQuests);
   const [toastXP, setToastXP] = useState(0);
   const [showToast, setShowToast] = useState(false);
   const [dashboardUser, setDashboardUser] = useState<DashboardUser>(MOCK_USER);
@@ -194,12 +195,31 @@ export default function DashboardPage() {
       }));
     }
 
+    const today = new Date().toISOString().slice(0, 10);
+
     Promise.allSettled([cariApi.getProfile(), cariApi.listApplications()]).then((results) => {
       if (!active) return;
 
       const profileResult = results[0];
       if (profileResult.status === 'fulfilled') {
         const { profile } = profileResult.value;
+        const pd = profile.profileData as Record<string, unknown>;
+
+        // Compute skill match from profile data when the stored value is 0
+        let computedSkillMatch = profile.skillMatch;
+        if (computedSkillMatch === 0) {
+          const skills = pd.skills as { languages?: string[]; frameworks?: string[]; tools?: string[] } | undefined;
+          const totalSkills = [
+            ...(skills?.languages ?? []),
+            ...(skills?.frameworks ?? []),
+            ...(skills?.tools ?? []),
+          ].length;
+          if (totalSkills > 0) {
+            // 20+ skills ≈ 85% match for junior/mid roles
+            computedSkillMatch = Math.min(85, Math.round((totalSkills / 20) * 85));
+          }
+        }
+
         setDashboardUser((current) => ({
           ...current,
           name: profile.fullName?.split(' ')[0] ?? profile.email.split('@')[0],
@@ -207,9 +227,28 @@ export default function DashboardPage() {
           xp: profile.xp,
           streak: profile.streak,
           atsScore: profile.atsScore,
-          skillMatch: profile.skillMatch,
+          skillMatch: computedSkillMatch,
           xpPercent: Math.min(100, Math.round((profile.xp / current.xpMax) * 100)),
         }));
+
+        // Load persisted quests — if same day, restore; otherwise generate fresh
+        const raw = (profile.profileData as Record<string, unknown>)?.quests;
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+          const persisted = raw as PersistedQuests;
+          if (persisted.date === today && Array.isArray(persisted.items)) {
+            setQuests(persisted.items);
+          } else {
+            // New day — save fresh quests to profile
+            const fresh = getDailyQuests();
+            setQuests(fresh);
+            void cariApi.updateProfile({ profileData: { ...(profile.profileData as Record<string, unknown>), quests: { date: today, items: fresh } } });
+          }
+        } else {
+          // First time — save generated quests
+          const fresh = getDailyQuests();
+          setQuests(fresh);
+          void cariApi.updateProfile({ profileData: { ...(profile.profileData as Record<string, unknown>), quests: { date: today, items: fresh } } });
+        }
       }
 
       const applicationResult = results[1];
@@ -238,8 +277,8 @@ export default function DashboardPage() {
   const totalXPToday = quests.filter(q => q.completed).reduce((s, q) => s + q.xp, 0);
 
   function handleQuestToggle(id: string) {
-    setQuests(prev =>
-      prev.map(q => {
+    setQuests(prev => {
+      const next = prev.map(q => {
         if (q.id !== id) return q;
         if (!q.completed) {
           setToastXP(q.xp);
@@ -247,8 +286,16 @@ export default function DashboardPage() {
           setTimeout(() => setShowToast(false), 2500);
         }
         return { ...q, completed: !q.completed };
-      })
-    );
+      });
+      // Persist asynchronously — fire and forget
+      const today = new Date().toISOString().slice(0, 10);
+      void cariApi.getProfile().then(({ profile }) =>
+        cariApi.updateProfile({
+          profileData: { ...(profile.profileData as Record<string, unknown>), quests: { date: today, items: next } },
+        })
+      ).catch(() => undefined);
+      return next;
+    });
   }
 
   return (
@@ -498,24 +545,37 @@ export default function DashboardPage() {
             style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 40 }}
           >
             {/* ATS Score */}
-            <div style={{
-              background: '#FFFFFF', borderRadius: 16, border: '1px solid #E8E0D0',
-              padding: '16px 18px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: '#E8F7FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <BarChart2 size={14} color="#1CB0F6" />
+            <Link href="/analyse" style={{ textDecoration: 'none' }}>
+              <div style={{
+                background: '#FFFFFF', borderRadius: 16, border: `1px solid ${dashboardUser.atsScore === 0 ? '#FFC800' : '#E8E0D0'}`,
+                padding: '16px 18px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', cursor: 'pointer',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: '#E8F7FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <BarChart2 size={14} color="#1CB0F6" />
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#6B6B6B' }}>ATS Score</span>
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#6B6B6B' }}>ATS Score</span>
+                {dashboardUser.atsScore === 0 ? (
+                  <>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#FFC800', lineHeight: 1.4 }}>
+                      Not analysed yet
+                    </div>
+                    <div style={{ fontSize: 11, color: '#6B6B6B', marginTop: 6 }}>Tap to analyse a job →</div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 32, fontWeight: 800, color: '#1A1A1A', lineHeight: 1 }}>
+                      {dashboardUser.atsScore}<span style={{ fontSize: 16, color: '#6B6B6B', fontWeight: 600 }}>/100</span>
+                    </div>
+                    <div style={{ marginTop: 8 }}>
+                      <XPBar percent={dashboardUser.atsScore} color="#1CB0F6" height={6} />
+                    </div>
+                    <div style={{ fontSize: 11, color: '#6B6B6B', marginTop: 6 }}>Last job analysis score</div>
+                  </>
+                )}
               </div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: '#1A1A1A', lineHeight: 1 }}>
-                {dashboardUser.atsScore}<span style={{ fontSize: 16, color: '#6B6B6B', fontWeight: 600 }}>/100</span>
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <XPBar percent={dashboardUser.atsScore} color="#1CB0F6" height={6} />
-              </div>
-              <div style={{ fontSize: 11, color: '#6B6B6B', marginTop: 6 }}>Update your CV to improve</div>
-            </div>
+            </Link>
 
             {/* Skill Match */}
             <div style={{
@@ -534,7 +594,9 @@ export default function DashboardPage() {
               <div style={{ marginTop: 8 }}>
                 <XPBar percent={dashboardUser.skillMatch} color="#7C5CBF" height={6} />
               </div>
-              <div style={{ fontSize: 11, color: '#6B6B6B', marginTop: 6 }}>vs. Junior Dev roles</div>
+              <div style={{ fontSize: 11, color: '#6B6B6B', marginTop: 6 }}>
+                {dashboardUser.skillMatch === 0 ? 'Add skills to your profile' : 'Based on your skill profile'}
+              </div>
             </div>
           </motion.div>
 

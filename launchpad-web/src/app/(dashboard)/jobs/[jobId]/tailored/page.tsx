@@ -1,6 +1,7 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Rocket,
@@ -17,6 +18,7 @@ import { haptic } from '@/lib/haptics';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
 import BottomNav from '@/components/BottomNav';
+import { cariApi, type GeneratedResume } from '@/lib/cari-api';
 
 // ---------------------------------------------------------------------------
 // Mock data
@@ -78,33 +80,11 @@ const MOCK_TAILORED_RESUME = {
   },
 };
 
-// AI enhancement mock suggestions
-const AI_SUGGESTIONS = [
-  {
-    id: 'summary',
-    label: 'Professional Summary',
-    original: 'Dynamic Senior Frontend Engineer with 5+ years of experience specialized in building high-performance web applications using React.js and TypeScript.',
-    enhanced: 'Results-driven Senior Frontend Engineer with 5+ years delivering production-grade React.js / TypeScript applications that serve 1M+ users — reduced TTI by 40% and shipped 3 major product lines on time across two fintech scale-ups.',
-  },
-  {
-    id: 'bullet1',
-    label: 'Experience — Migration bullet',
-    original: 'Led the migration of a legacy dashboard to React 18 and Next.js, resulting in a 40% faster initial load time.',
-    enhanced: 'Architected and led end-to-end migration of 80K-LOC legacy dashboard to React 18 + Next.js App Router, cutting initial load time by 40% and eliminating 12 P1 bugs in 6-week sprint.',
-  },
-  {
-    id: 'bullet2',
-    label: 'Experience — Design system bullet',
-    original: 'Implemented a comprehensive design system using Tailwind CSS and Storybook, ensuring UI consistency across 4 separate product lines.',
-    enhanced: 'Built and adopted a 60+ component Tailwind CSS / Storybook design system across 4 product lines, reducing per-feature UI development time by 35% and cutting QA cycles from 3 days to 1.',
-  },
-];
+type EditableResume = typeof MOCK_TAILORED_RESUME.resume;
 
 // Suppress unused warnings
 void MOCK_JOB_DETAIL;
 void FileText;
-void Sparkles;
-void Check;
 
 // ---------------------------------------------------------------------------
 // DiamondChart
@@ -155,6 +135,67 @@ function DiamondChart({ score, labels }: { score: number; labels: string[] }) {
 // Suppress unused — DiamondChart kept for parity but not used in this page
 void DiamondChart;
 
+function toEditableResume(resume: GeneratedResume): EditableResume {
+  return {
+    name: resume.personal.fullName,
+    title: resume.metadata.targetRole ?? resume.metadata.title,
+    email: resume.personal.email ?? '',
+    location: resume.personal.location ?? '',
+    linkedin: resume.personal.linkedin ?? '',
+    summary: resume.summary,
+    experience: resume.experience.map((item) => ({
+      role: item.role,
+      company: item.company,
+      period: [item.startDate, item.current ? 'Present' : item.endDate]
+        .filter((value): value is string => Boolean(value))
+        .join(' - '),
+      bullets: item.bullets,
+    })),
+    skills: [
+      ...resume.skills.languages,
+      ...resume.skills.frameworks,
+      ...resume.skills.toolsAndPlatforms,
+    ],
+  };
+}
+
+function mergeEditableResume(
+  base: GeneratedResume,
+  editable: EditableResume
+): GeneratedResume {
+  return {
+    ...base,
+    metadata: {
+      ...base.metadata,
+      title: editable.title,
+      targetRole: editable.title,
+    },
+    personal: {
+      ...base.personal,
+      fullName: editable.name,
+      email: editable.email,
+      location: editable.location,
+      linkedin: editable.linkedin,
+    },
+    summary: editable.summary,
+    experience: base.experience.map((item, index) => {
+      const edited = editable.experience[index];
+      if (!edited) return item;
+
+      return {
+        ...item,
+        role: edited.role,
+        company: edited.company,
+        bullets: edited.bullets,
+      };
+    }),
+    skills: {
+      ...base.skills,
+      toolsAndPlatforms: editable.skills,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -165,19 +206,147 @@ export default function TailoredResumePage({
   params: Promise<{ jobId: string }>;
 }) {
   const { jobId } = use(params);
+  const searchParams = useSearchParams();
+  const requestedResumeId = searchParams.get('resumeId');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [aiEnhanceOpen, setAiEnhanceOpen] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<Array<{ id: string; original: string; enhanced: string }>>([]);
+  const [aiLoading, setAiLoading] = useState(false);
   const [acceptedSuggestions, setAcceptedSuggestions] = useState<Set<string>>(new Set());
-  const [editableResume, setEditableResume] = useState(MOCK_TAILORED_RESUME.resume);
-  void jobId;
+  const [editableResume, setEditableResume] = useState<EditableResume>(MOCK_TAILORED_RESUME.resume);
+  const [generatedResume, setGeneratedResume] = useState<GeneratedResume | null>(null);
+  const [savedResumeId, setSavedResumeId] = useState<string | null>(requestedResumeId);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const resumeToShow = editMode ? editableResume : editableResume;
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadResume(): Promise<void> {
+      try {
+        setLoading(true);
+
+        if (requestedResumeId) {
+          const data = await cariApi.getResume(requestedResumeId);
+          if (!active) return;
+          setSavedResumeId(data.resume.id);
+          setGeneratedResume(data.resume.resume);
+          setEditableResume(toEditableResume(data.resume.resume));
+          return;
+        }
+
+        const existing = await cariApi.listResumes({ jobId, limit: 1 });
+        if (existing.resumes[0]) {
+          if (!active) return;
+          setSavedResumeId(existing.resumes[0].id);
+          setGeneratedResume(existing.resumes[0].resume);
+          setEditableResume(toEditableResume(existing.resumes[0].resume));
+          return;
+        }
+
+        const [jobData, profileData] = await Promise.all([
+          cariApi.getJob(jobId),
+          cariApi.getProfile(),
+        ]);
+        const generated = await cariApi.generateResume({
+          title: `${jobData.job.title} Tailored Resume`,
+          profileData: {
+            ...profileData.profile.profileData,
+            personal: {
+              ...(typeof profileData.profile.profileData.personal === 'object' &&
+              profileData.profile.profileData.personal !== null
+                ? profileData.profile.profileData.personal
+                : {}),
+              fullName: profileData.profile.fullName,
+              email: profileData.profile.email,
+            },
+            targetRole: profileData.profile.targetRole,
+          },
+          jobDescription: jobData.job.description,
+          jobId,
+        });
+
+        if (!active) return;
+        setSavedResumeId(generated.resume.id);
+        setGeneratedResume(generated.resume.resume);
+        setEditableResume(toEditableResume(generated.resume.resume));
+      } catch {
+        // Keep the designed mock preview when offline or unauthenticated.
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    loadResume().catch(() => {
+      if (active) setLoading(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [jobId, requestedResumeId]);
 
   function handlePrint() {
     haptic('light');
     window.print();
+  }
+
+  async function handleEditToggle() {
+    if (editMode && savedResumeId && generatedResume) {
+      try {
+        setSaving(true);
+        const nextResume = mergeEditableResume(generatedResume, editableResume);
+        const data = await cariApi.updateResume(savedResumeId, {
+          resume: nextResume,
+          title: nextResume.metadata.title,
+        });
+        setGeneratedResume(data.resume.resume);
+        setEditableResume(toEditableResume(data.resume.resume));
+        setToastMessage('Resume edits saved');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2200);
+      } catch {
+        setToastMessage('Could not save edits yet');
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2200);
+      } finally {
+        setSaving(false);
+      }
+    }
+
+    setEditMode((current) => !current);
+  }
+
+  async function handleApply() {
+    try {
+      haptic('success');
+      await cariApi.applyToJob(jobId, savedResumeId);
+      setToastMessage('Application submitted with tailored resume!');
+    } catch (err) {
+      setToastMessage(err instanceof Error ? err.message : 'Could not apply yet');
+    }
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2500);
+  }
+
+  async function handleOpenAiEnhance() {
+    setAiEnhanceOpen(true);
+    setAcceptedSuggestions(new Set());
+    if (aiSuggestions.length > 0) return;
+    try {
+      setAiLoading(true);
+      const allBullets = editableResume.experience.flatMap(e => e.bullets);
+      const result = await cariApi.enhanceBullets({ bullets: allBullets });
+      setAiSuggestions(result.suggestions);
+    } catch {
+      setAiSuggestions([]);
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   function toggleSuggestion(id: string) {
@@ -189,6 +358,24 @@ export default function TailoredResumePage({
   }
 
   function applyAccepted() {
+    if (acceptedSuggestions.size > 0) {
+      const allBullets = editableResume.experience.flatMap(e => e.bullets);
+      const updatedFlat = [...allBullets];
+      for (const s of aiSuggestions) {
+        if (acceptedSuggestions.has(s.id)) {
+          const idx = parseInt(s.id, 10);
+          if (!isNaN(idx) && idx < updatedFlat.length) updatedFlat[idx] = s.enhanced;
+        }
+      }
+      let flatIdx = 0;
+      setEditableResume(r => ({
+        ...r,
+        experience: r.experience.map(ex => ({
+          ...ex,
+          bullets: ex.bullets.map(() => updatedFlat[flatIdx++] ?? ''),
+        })),
+      }));
+    }
     setAiEnhanceOpen(false);
     setToastMessage(`Applied ${acceptedSuggestions.size} AI enhancement${acceptedSuggestions.size !== 1 ? 's' : ''} ✨`);
     setShowToast(true);
@@ -230,13 +417,14 @@ export default function TailoredResumePage({
               ✓ ATS Optimized
             </span>
             <button
-              onClick={() => setAiEnhanceOpen(true)}
+              onClick={() => { void handleOpenAiEnhance(); }}
               className="flex items-center gap-1.5 bg-[#F0EBFF] border border-[#7C5CBF] rounded-full px-3.5 py-1.5 text-[13px] font-bold text-[#7C5CBF]"
             >
               <Sparkles size={14} /> AI Enhance
             </button>
             <button
-              onClick={() => setEditMode(e => !e)}
+              onClick={handleEditToggle}
+              disabled={saving}
               className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-bold"
               style={{
                 background: editMode ? '#FFC800' : '#F5F0E8',
@@ -244,13 +432,19 @@ export default function TailoredResumePage({
                 color: '#1A1A1A',
               }}
             >
-              <Pencil size={13} /> {editMode ? 'Editing' : 'Edit'}
+              <Pencil size={13} /> {saving ? 'Saving' : editMode ? 'Save' : 'Edit'}
             </button>
           </div>
         </motion.div>
 
         {/* MOBILE top bar */}
         <div className="no-print"><TopBar /></div>
+
+        {loading && (
+          <div className="no-print mx-4 mt-4 rounded-xl border border-[#E8E0D0] bg-white px-4 py-3 text-[13px] font-bold text-[#6B6B6B] lg:mx-6">
+            Preparing your tailored resume...
+          </div>
+        )}
 
         {/* MOBILE: Match Score Card */}
         <div className="lg:hidden no-print mx-4 mt-3 mb-4 bg-white rounded-2xl border border-[#E8E0D0] p-4">
@@ -566,10 +760,7 @@ export default function TailoredResumePage({
             <motion.button
               whileTap={{ scale: 0.97, y: 2 }}
               onClick={() => {
-                haptic('success');
-                setToastMessage('Application submitted with tailored resume!');
-                setShowToast(true);
-                setTimeout(() => setShowToast(false), 2500);
+                handleApply();
               }}
               className="w-full h-[52px] bg-[#2D2D2D] rounded-2xl shadow-[0_4px_0_#1A1A1A] flex items-center justify-center gap-2"
             >
@@ -594,7 +785,7 @@ export default function TailoredResumePage({
             {/* AI Enhance */}
             <motion.button
               whileTap={{ scale: 0.97, y: 2 }}
-              onClick={() => setAiEnhanceOpen(true)}
+              onClick={() => { void handleOpenAiEnhance(); }}
               className="w-full h-[52px] bg-[#F0EBFF] rounded-2xl border-2 border-[#7C5CBF] shadow-[0_4px_0_#5A3D8F] flex items-center justify-center gap-2 no-print"
             >
               <Sparkles size={18} className="text-[#7C5CBF]" />
@@ -608,7 +799,8 @@ export default function TailoredResumePage({
         {/* MOBILE: Edit + AI Enhance buttons */}
         <div className="lg:hidden fixed bottom-[72px] left-0 right-0 z-30 flex gap-2 px-4 pb-2 no-print">
           <button
-            onClick={() => setEditMode(e => !e)}
+            onClick={handleEditToggle}
+            disabled={saving}
             className="flex-1 h-[44px] rounded-2xl flex items-center justify-center gap-2 text-[13px] font-bold"
             style={{
               background: editMode ? '#FFC800' : '#F5F0E8',
@@ -616,10 +808,10 @@ export default function TailoredResumePage({
               color: '#1A1A1A',
             }}
           >
-            <Pencil size={14} /> {editMode ? 'Editing' : 'Edit'}
+            <Pencil size={14} /> {saving ? 'Saving' : editMode ? 'Save' : 'Edit'}
           </button>
           <button
-            onClick={() => setAiEnhanceOpen(true)}
+            onClick={() => { void handleOpenAiEnhance(); }}
             className="flex-1 h-[44px] rounded-2xl flex items-center justify-center gap-2 text-[13px] font-bold bg-[#F0EBFF] border border-[#7C5CBF] text-[#7C5CBF]"
           >
             <Sparkles size={14} /> AI Enhance
@@ -666,8 +858,21 @@ export default function TailoredResumePage({
                   Cari rewrote these sections using SMART metrics and STAR storytelling. Accept the ones you like — you have the final say.
                 </p>
 
+                {aiLoading && (
+                  <div className="flex flex-col items-center py-8 gap-3">
+                    <div className="w-8 h-8 border-4 border-[#FFC800] border-t-transparent rounded-full animate-spin" />
+                    <p className="text-[13px] text-[#6B6B6B]">Cari is rewriting your bullets...</p>
+                  </div>
+                )}
+
+                {!aiLoading && aiSuggestions.length === 0 && (
+                  <div className="text-center py-6 text-[13px] text-[#ABABAB]">
+                    No bullets to enhance yet. Add experience bullets first.
+                  </div>
+                )}
+
                 <div className="flex flex-col gap-4 mb-6">
-                  {AI_SUGGESTIONS.map(s => {
+                  {aiSuggestions.map(s => {
                     const accepted = acceptedSuggestions.has(s.id);
                     return (
                       <div
@@ -675,7 +880,9 @@ export default function TailoredResumePage({
                         className="border rounded-2xl p-4 transition-all"
                         style={{ borderColor: accepted ? '#FFC800' : '#E8E0D0', background: accepted ? '#FFFDF0' : '#FAFAF8' }}
                       >
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-[#7C5CBF] mb-3">{s.label}</p>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-[#7C5CBF] mb-3">
+                          Bullet {parseInt(s.id, 10) + 1}
+                        </p>
                         <div className="grid grid-cols-1 gap-3">
                           <div>
                             <p className="text-[10px] font-semibold uppercase text-[#ABABAB] mb-1">Original</p>
@@ -705,7 +912,7 @@ export default function TailoredResumePage({
 
                 <button
                   onClick={applyAccepted}
-                  disabled={acceptedSuggestions.size === 0}
+                  disabled={acceptedSuggestions.size === 0 || aiLoading}
                   className="w-full h-[52px] rounded-2xl text-[14px] font-bold uppercase tracking-wider transition-all"
                   style={{
                     background: acceptedSuggestions.size > 0 ? '#FFC800' : '#E8E0D0',
@@ -714,7 +921,7 @@ export default function TailoredResumePage({
                     boxShadow: acceptedSuggestions.size > 0 ? '0 4px 0 #CC9F00' : 'none',
                   }}
                 >
-                  Apply All Accepted ({acceptedSuggestions.size}/{AI_SUGGESTIONS.length})
+                  Apply All Accepted ({acceptedSuggestions.size}/{aiSuggestions.length})
                 </button>
               </motion.div>
             </motion.div>

@@ -38,6 +38,8 @@ interface Job {
   salaryMax: number;
   currency: string;
   description?: string;
+  source?: 'supabase' | 'jsearch';
+  applyUrl?: string | null;
   requiredSkills: string[];
   niceToHaveSkills: string[];
   matchScore: number;
@@ -273,6 +275,8 @@ function mapApiJob(job: JobResponse, index: number): Job {
     salaryMax: job.salaryMax,
     currency: job.currency,
     description: job.description,
+    source: job.source,
+    applyUrl: job.applyUrl,
     requiredSkills: job.requiredSkills,
     niceToHaveSkills: job.niceToHaveSkills,
     matchScore: 50,
@@ -324,8 +328,8 @@ const MatchBadge = ({
 };
 
 const SkillRadarChart = ({ data }: { data: RadarPoint[] }) => (
-  <div style={{ width: '100%', height: 230 }}>
-    <ResponsiveContainer width="100%" height="100%">
+  <div style={{ width: '100%', height: 230, minWidth: 0 }}>
+    <ResponsiveContainer width="100%" height={230} debounce={50}>
       <RadarChart data={data} margin={{ top: 14, right: 30, bottom: 14, left: 30 }}>
         <PolarGrid stroke="#E8E0D0" />
         <PolarAngleAxis dataKey="skill" tick={{ fontSize: 10, fill: '#6B6B6B', fontWeight: 600 }} />
@@ -627,6 +631,7 @@ export default function JobsPage() {
   const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>(ALL_JOBS[0].id);
   const [applyMessage, setApplyMessage] = useState('');
+  const [externalLoading, setExternalLoading] = useState(false);
 
   // Mobile sheet state
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -646,20 +651,53 @@ export default function JobsPage() {
 
   useEffect(() => {
     let active = true;
-    cariApi
-      .listJobs()
-      .then((data) => {
+    async function loadJobs() {
+      try {
+        const data = await cariApi.listJobs();
         if (!active) return;
-        const mappedJobs = data.jobs.map(mapApiJob);
+        let mappedJobs = data.jobs.map(mapApiJob);
+        if (mappedJobs.length === 0) {
+          const external = await cariApi.searchExternalJobs({
+            query: 'software engineer in Malaysia',
+            country: 'my',
+            datePosted: 'month',
+            numPages: 1,
+          });
+          if (!active) return;
+          mappedJobs = external.jobs.map(mapApiJob);
+        }
         if (mappedJobs.length > 0) {
           setJobs(mappedJobs);
           setSelectedJobId(mappedJobs[0].id);
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         if (!active) return;
-        setJobsError(error instanceof Error ? error.message : 'Could not load jobs');
-      });
+        try {
+          const external = await cariApi.searchExternalJobs({
+            query: 'software engineer in Malaysia',
+            country: 'my',
+            datePosted: 'month',
+            numPages: 1,
+          });
+          if (!active) return;
+          const mappedJobs = external.jobs.map(mapApiJob);
+          if (mappedJobs.length > 0) {
+            setJobs(mappedJobs);
+            setSelectedJobId(mappedJobs[0].id);
+          }
+        } catch (externalError) {
+          setJobsError(
+            externalError instanceof Error
+              ? externalError.message
+              : error instanceof Error
+                ? error.message
+                : 'Could not load jobs'
+          );
+        }
+      }
+    }
+
+    loadJobs().catch(() => undefined);
 
     return () => {
       active = false;
@@ -698,7 +736,46 @@ export default function JobsPage() {
     haptic('light');
   };
 
+  const handleSearchWebJobs = async () => {
+    try {
+      setExternalLoading(true);
+      setJobsError('');
+      const query = searchQuery.trim() || 'software engineer in Malaysia';
+      const data = await cariApi.searchExternalJobs({
+        query,
+        country: 'my',
+        datePosted: 'month',
+        numPages: 1,
+      });
+      const mappedJobs = data.jobs.map(mapApiJob);
+      if (mappedJobs.length > 0) {
+        setJobs(mappedJobs);
+        setSelectedJobId(mappedJobs[0].id);
+      } else {
+        setJobsError('No external jobs found for that search.');
+      }
+    } catch (error) {
+      setJobsError(error instanceof Error ? error.message : 'Could not search web jobs');
+    } finally {
+      setExternalLoading(false);
+    }
+  };
+
   const handleApply = async (jobId: string) => {
+    const job = jobs.find((item) => item.id === jobId);
+    if (job?.source === 'jsearch' && job.applyUrl) {
+      window.open(job.applyUrl, '_blank', 'noopener,noreferrer');
+      setApplyMessage(`Opened external application for ${job.title}`);
+      // Track in profileData so it appears in dashboard history
+      void cariApi.trackExternalApplication({
+        jobTitle: job.title,
+        company: job.company,
+        applyUrl: job.applyUrl,
+        location: job.location,
+      }).catch(() => undefined);
+      return;
+    }
+
     try {
       setApplyMessage('');
       const data = await cariApi.applyToJob(jobId);
@@ -707,6 +784,17 @@ export default function JobsPage() {
     } catch (error) {
       setApplyMessage(error instanceof Error ? error.message : 'Could not apply');
     }
+  };
+
+  const handleTailorResume = (job: Job) => {
+    if (job.source === 'jsearch') {
+      setActiveTab('analyse');
+      setJdText(job.description ?? '');
+      setAnalysisError('External jobs can be analysed first. Save/apply happens on the original job site.');
+      return;
+    }
+
+    router.push(`/jobs/${job.id}/tailored`);
   };
 
   const handleAnalyse = async () => {
@@ -720,7 +808,7 @@ export default function JobsPage() {
       const data = await cariApi.analyse({
         cvText: cvText.padEnd(120, ' '),
         jobDescription: (jdText || selectedJob.description || selectedJob.requiredSkills.join(', ')).padEnd(120, ' '),
-        jobId: selectedJob.id,
+        jobId: selectedJob.source === 'jsearch' ? null : selectedJob.id,
       });
       setAnalysisResult(data.analysis.result);
       setAnalyseState('results');
@@ -795,6 +883,13 @@ export default function JobsPage() {
                         className="flex-1 bg-transparent text-[14px] outline-none text-[#1A1A1A] placeholder:text-[#ABABAB]"
                       />
                     </div>
+                    <button
+                      onClick={handleSearchWebJobs}
+                      disabled={externalLoading}
+                      className="mt-2 w-full h-10 rounded-xl bg-[#1A1A1A] text-white text-[13px] font-bold disabled:opacity-60"
+                    >
+                      {externalLoading ? 'Searching Web Jobs...' : 'Search Web Jobs'}
+                    </button>
                   </div>
 
                   {/* Filter chips */}
@@ -986,7 +1081,7 @@ export default function JobsPage() {
                       <div className="mt-5 flex gap-3">
                         <motion.button
                           whileTap={{ scale: 0.97, y: 2 }}
-                          onClick={() => router.push(`/jobs/${selectedJob.id}/tailored`)}
+                          onClick={() => handleTailorResume(selectedJob)}
                           className="flex-1 h-12 rounded-xl bg-[#FFC800] text-[15px] font-bold text-[#1A1A1A] shadow-[0_4px_0_#CC9F00]"
                         >
                           Tailor Resume →
@@ -1022,6 +1117,13 @@ export default function JobsPage() {
                     className="flex-1 bg-transparent text-[14px] outline-none text-[#1A1A1A] placeholder:text-[#ABABAB]"
                   />
                 </div>
+                <button
+                  onClick={handleSearchWebJobs}
+                  disabled={externalLoading}
+                  className="h-10 rounded-xl bg-[#1A1A1A] text-white text-[13px] font-bold disabled:opacity-60"
+                >
+                  {externalLoading ? 'Searching Web Jobs...' : 'Search Web Jobs'}
+                </button>
 
                 {/* Filter chips */}
                 <div className="flex gap-2 overflow-x-auto pb-1">
@@ -1157,7 +1259,7 @@ export default function JobsPage() {
                       </motion.button>
                       <motion.button
                         whileTap={{ scale: 0.97 }}
-                        onClick={() => haptic('medium')}
+                        onClick={() => handleApply(job.id)}
                         className="flex-1 h-11 rounded-xl bg-[#FFC800] text-[14px] font-bold text-[#1A1A1A] shadow-[0_3px_0_#CC9F00]"
                       >
                         Apply
@@ -1363,7 +1465,7 @@ export default function JobsPage() {
                     <div className="flex gap-2.5 mt-3">
                       <motion.button
                         whileTap={{ scale: 0.97, y: 2 }}
-                        onClick={() => router.push(`/jobs/${selectedJob.id}/tailored`)}
+                        onClick={() => handleTailorResume(selectedJob)}
                         className="flex-1 h-12 rounded-xl bg-[#FFC800] text-[15px] font-bold text-[#1A1A1A] shadow-[0_4px_0_#CC9F00]"
                       >
                         Tailor My Resume →
@@ -1564,7 +1666,7 @@ export default function JobsPage() {
               <div className="px-5 pb-8 flex flex-col gap-2.5">
                 <motion.button
                   whileTap={{ scale: 0.97, y: 2 }}
-                  onClick={() => router.push(`/jobs/${sheetJob.id}/tailored`)}
+                  onClick={() => handleTailorResume(sheetJob)}
                   className="w-full h-13 rounded-xl bg-[#FFC800] text-[15px] font-bold text-[#1A1A1A] shadow-[0_4px_0_#CC9F00] py-3"
                 >
                   Tailor Resume →

@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ExternalLink, Check, Lock, Star } from 'lucide-react';
+import { X, ExternalLink, Check, Lock, Star, Plus, Sparkles } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
 import BottomNav from '@/components/BottomNav';
 import { haptic } from '@/lib/haptics';
+import { cariApi } from '@/lib/cari-api';
 import {
   ROLE_ROADMAPS,
   type CareerRole,
@@ -36,6 +37,14 @@ const ROLE_DESCRIPTIONS: Record<CareerRole, string> = {
 const LS_CHECKED  = 'cari_roadmap_checked';
 const LS_ROLE     = 'cari_roadmap_role';
 const LS_COMPLETED = (role: CareerRole) => `cari_completed_${role}`;
+
+type RoadmapProgress = Partial<Record<CareerRole, string[]>>;
+
+interface RoadmapProfileData extends Record<string, unknown> {
+  roadmapProgress?: RoadmapProgress;
+  roadmapRole?: CareerRole;
+  roadmapQuickCheckScore?: number;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -75,6 +84,61 @@ function computeStats(phases: RoadmapPhase[]) {
   const total = all.length;
   const xpEarned = all.filter((s) => s.status === 'completed').reduce((sum, s) => sum + s.xp, 0);
   return { completed, total, xpEarned, pct: total ? Math.round((completed / total) * 100) : 0 };
+}
+
+function isCareerRole(value: unknown): value is CareerRole {
+  return (
+    value === 'frontend' ||
+    value === 'backend' ||
+    value === 'data' ||
+    value === 'devops' ||
+    value === 'ai'
+  );
+}
+
+function normalizeProgress(value: unknown): RoadmapProgress {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  const source = value as Record<string, unknown>;
+  const progress: RoadmapProgress = {};
+  for (const role of Object.keys(ROLE_ROADMAPS) as CareerRole[]) {
+    const ids = source[role];
+    if (Array.isArray(ids)) {
+      progress[role] = ids.filter((id): id is string => typeof id === 'string');
+    }
+  }
+  return progress;
+}
+
+async function persistRoadmapProgress(
+  role: CareerRole,
+  completedIds?: string[],
+  xpEarned = 0
+): Promise<void> {
+  const { profile } = await cariApi.getProfile();
+  const profileData = profile.profileData as RoadmapProfileData;
+  const progress = normalizeProgress(profileData.roadmapProgress);
+  const localIdsRaw = localStorage.getItem(LS_COMPLETED(role));
+  const localIds = localIdsRaw ? (JSON.parse(localIdsRaw) as unknown) : [];
+  const ids = completedIds ?? (Array.isArray(localIds) ? localIds.filter((id): id is string => typeof id === 'string') : []);
+  progress[role] = ids;
+
+  await cariApi.updateProfile({
+    fullName: profile.fullName,
+    targetRole: profile.targetRole,
+    profileData: {
+      ...profileData,
+      roadmapProgress: progress,
+      roadmapRole: role,
+      roadmapQuickCheckScore:
+        parseInt(localStorage.getItem(LS_CHECKED) ?? '0', 10) || 0,
+    },
+    onboarded: profile.onboarded,
+    xp: profile.xp + xpEarned,
+    streak: profile.streak,
+    level: profile.level,
+    atsScore: profile.atsScore,
+    skillMatch: profile.skillMatch,
+  });
 }
 
 // ─── Quick Check Modal ────────────────────────────────────────────────────────
@@ -182,18 +246,160 @@ function QuickCheckModal({ onDone }: { onDone: (score: number) => void }) {
   );
 }
 
+// ─── Custom Roadmap Generation ────────────────────────────────────────────────
+
+const GEN_STEPS = [
+  { label: 'Analyzing role requirements', emoji: '🔍' },
+  { label: 'Designing your skill tree', emoji: '🌳' },
+  { label: 'Planning the learning path', emoji: '🗺️' },
+  { label: 'Curating free resources', emoji: '📚' },
+];
+
+function GeneratingScreen({ roleName, step, done }: { roleName: string; step: number; done: boolean }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[300] flex flex-col items-center justify-center px-8"
+      style={{ background: '#1A1A1A' }}
+    >
+      {/* Mascot pulse */}
+      <motion.div
+        animate={{ scale: [1, 1.06, 1] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+        className="mb-8"
+      >
+        <div
+          className="relative flex items-center justify-center"
+          style={{ width: 100, height: 100 }}
+        >
+          {/* Glow ring */}
+          <motion.div
+            animate={{ opacity: [0.3, 0.7, 0.3], scale: [1, 1.15, 1] }}
+            transition={{ duration: 1.8, repeat: Infinity }}
+            className="absolute inset-0 rounded-[28px]"
+            style={{ background: '#FFC800', filter: 'blur(16px)' }}
+          />
+          <img
+            src="/mascot-face.png"
+            alt="Cari"
+            style={{ width: 88, height: 88, borderRadius: 22, objectFit: 'cover', position: 'relative', border: '3px solid #FFC800' }}
+          />
+        </div>
+      </motion.div>
+
+      {/* Title */}
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#FFC800', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+        Building Your Path
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: '#FFFFFF', textAlign: 'center', marginBottom: 40, maxWidth: 280 }}>
+        {roleName}
+      </div>
+
+      {/* Steps */}
+      <div className="flex flex-col gap-3 w-full" style={{ maxWidth: 320 }}>
+        {GEN_STEPS.map((s, i) => {
+          const isActive = i === step && !done;
+          const isDone = done || i < step;
+          return (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: i <= step || done ? 1 : 0.3, x: 0 }}
+              transition={{ delay: i * 0.15, duration: 0.35 }}
+              className="flex items-center gap-3"
+            >
+              <div
+                style={{
+                  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: isDone ? '#FFC800' : isActive ? '#2A2A2A' : '#222',
+                  border: isActive ? '2px solid #FFC800' : isDone ? '2px solid #CC9F00' : '2px solid #333',
+                  transition: 'all 0.3s',
+                }}
+              >
+                {isDone ? (
+                  <Check size={16} color="#1A1A1A" strokeWidth={3} />
+                ) : isActive ? (
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                    style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #FFC800', borderTopColor: 'transparent' }}
+                  />
+                ) : (
+                  <span style={{ fontSize: 14 }}>{s.emoji}</span>
+                )}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: isDone || isActive ? 700 : 500, color: isDone ? '#FFC800' : isActive ? '#FFFFFF' : '#555' }}>
+                {s.label}
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ width: '100%', maxWidth: 320, marginTop: 40, height: 4, background: '#2A2A2A', borderRadius: 99 }}>
+        <motion.div
+          animate={{ width: done ? '100%' : `${((step + 1) / GEN_STEPS.length) * 100}%` }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          style={{ height: '100%', background: '#FFC800', borderRadius: 99 }}
+        />
+      </div>
+
+      {done && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{ marginTop: 24, fontSize: 14, fontWeight: 700, color: '#4CAF50' }}
+        >
+          ✓ Path ready — loading your roadmap...
+        </motion.div>
+      )}
+    </motion.div>
+  );
+}
+
 // ─── Skill Bottom Sheet ───────────────────────────────────────────────────────
 
 function SkillSheet({
   skill,
+  role,
   onClose,
   onMarkComplete,
+  resourceCache,
+  onCacheResources,
 }: {
   skill: RoadmapSkill;
+  role: CareerRole;
   onClose: () => void;
   onMarkComplete: (id: string, xp: number) => void;
+  resourceCache: Map<string, { label: string; url: string }[]>;
+  onCacheResources: (skillId: string, resources: { label: string; url: string }[]) => void;
 }) {
   const [completing, setCompleting] = useState(false);
+  const [aiResources, setAiResources] = useState<{ label: string; url: string }[] | null>(
+    resourceCache.get(skill.id) ?? null
+  );
+  const [resourcesLoading, setResourcesLoading] = useState(false);
+
+  useEffect(() => {
+    if (aiResources !== null) return;
+    setResourcesLoading(true);
+    cariApi.getSkillResources({ skillId: skill.id, skillLabel: skill.label, role, description: skill.description })
+      .then(({ resources }) => {
+        setAiResources(resources);
+        onCacheResources(skill.id, resources);
+      })
+      .catch(() => {
+        setAiResources(skill.resources); // fall back to static
+      })
+      .finally(() => setResourcesLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skill.id]);
+
+  const displayedResources = aiResources ?? skill.resources;
 
   const handleComplete = () => {
     setCompleting(true);
@@ -288,10 +494,16 @@ function SkillSheet({
 
           {/* Resources */}
           <div style={{ fontSize: 11, fontWeight: 700, color: '#ABABAB', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-            Free Resources
+            {resourcesLoading ? 'Cari is picking resources...' : 'Free Resources'}
           </div>
+          {resourcesLoading && (
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-5 h-5 border-2 border-[#FFC800] border-t-transparent rounded-full animate-spin" />
+              <span style={{ fontSize: 12, color: '#ABABAB' }}>Finding the best free resources for you...</span>
+            </div>
+          )}
           <div className="flex flex-col gap-2.5 pb-6">
-            {skill.resources.map((r, i) => (
+            {displayedResources.map((r, i) => (
               <a
                 key={i}
                 href={r.url}
@@ -519,17 +731,23 @@ function RightPanel({
   role,
   phases,
   showRolePicker,
+  customRoleLabel,
   onToggleRolePicker,
   onRoleSelect,
+  onAddCustomPath,
 }: {
   role: CareerRole;
   phases: RoadmapPhase[];
   showRolePicker: boolean;
+  customRoleLabel: string | null;
   onToggleRolePicker: () => void;
   onRoleSelect: (r: CareerRole) => void;
+  onAddCustomPath: () => void;
 }) {
   const stats = computeStats(phases);
-  const roleInfo = ROLES.find((r) => r.id === role)!;
+  const roleInfo = ROLES.find((r) => r.id === role) ?? ROLES[0]!;
+  const displayLabel = customRoleLabel ?? roleInfo.label;
+  const displayEmoji = customRoleLabel ? '✨' : roleInfo.emoji;
 
   return (
     <div
@@ -546,10 +764,10 @@ function RightPanel({
             Current Path
           </div>
           <div style={{ fontSize: 18, fontWeight: 800, color: '#FFFFFF' }}>
-            {roleInfo.emoji} {roleInfo.label}
+            {displayEmoji} {displayLabel}
           </div>
           <div style={{ fontSize: 12, color: '#ABABAB', marginTop: 4, lineHeight: 1.5 }}>
-            {ROLE_DESCRIPTIONS[role]}
+            {customRoleLabel ? `AI-generated path for ${customRoleLabel}` : ROLE_DESCRIPTIONS[role]}
           </div>
         </div>
         <div style={{ padding: '12px 18px' }}>
@@ -581,14 +799,27 @@ function RightPanel({
                       style={{
                         width: '100%', textAlign: 'left', padding: '9px 12px',
                         borderRadius: 10, border: 'none', cursor: 'pointer',
-                        fontSize: 13, fontWeight: role === r.id ? 800 : 600,
-                        background: role === r.id ? '#FFC800' : '#F5F0E8',
+                        fontSize: 13, fontWeight: role === r.id && !customRoleLabel ? 800 : 600,
+                        background: role === r.id && !customRoleLabel ? '#FFC800' : '#F5F0E8',
                         color: '#1A1A1A',
                       }}
                     >
                       {r.emoji} {r.label}
                     </button>
                   ))}
+                  <div style={{ height: 1, background: '#E8E0D0', margin: '4px 0' }} />
+                  <button
+                    onClick={onAddCustomPath}
+                    style={{
+                      width: '100%', textAlign: 'left', padding: '9px 12px',
+                      borderRadius: 10, border: '1.5px dashed #7C5CBF', cursor: 'pointer',
+                      fontSize: 13, fontWeight: 700,
+                      background: customRoleLabel ? '#F0EBFF' : 'transparent',
+                      color: '#7C5CBF', display: 'flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    <Sparkles size={13} /> Generate Custom Path
+                  </button>
                 </div>
               </motion.div>
             )}
@@ -666,6 +897,14 @@ export default function RoadmapPage() {
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [activeSheet, setActiveSheet] = useState<RoadmapSkill | null>(null);
   const [xpToast, setXpToast] = useState<{ xp: number; visible: boolean }>({ xp: 0, visible: false });
+  const [resourceCache, setResourceCache] = useState<Map<string, { label: string; url: string }[]>>(new Map());
+  const [customRoleLabel, setCustomRoleLabel] = useState<string | null>(null);
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [customInput, setCustomInput] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [genStep, setGenStep] = useState(0);
+  const [genDone, setGenDone] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
   const xpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // On mount: restore saved role + score from onboarding
@@ -674,6 +913,38 @@ export default function RoadmapPage() {
     setSelectedRole(savedRole);
     const score = parseInt(localStorage.getItem(LS_CHECKED) ?? '0', 10) || 0;
     loadPhasesForRole(savedRole, score);
+
+    cariApi
+      .getProfile()
+      .then(({ profile }) => {
+        const profileData = profile.profileData as RoadmapProfileData;
+        const backendRole = isCareerRole(profileData.roadmapRole)
+          ? profileData.roadmapRole
+          : savedRole;
+        const backendScore =
+          typeof profileData.roadmapQuickCheckScore === 'number'
+            ? profileData.roadmapQuickCheckScore
+            : score;
+        const backendProgress = normalizeProgress(profileData.roadmapProgress);
+        const completedIds = new Set(backendProgress[backendRole] ?? []);
+
+        setSelectedRole(backendRole);
+        localStorage.setItem(LS_ROLE, backendRole);
+        localStorage.setItem(LS_CHECKED, String(backendScore));
+        localStorage.setItem(
+          LS_COMPLETED(backendRole),
+          JSON.stringify([...completedIds])
+        );
+        setPhases(
+          applyCompletedIds(
+            applyCheckResult(ROLE_ROADMAPS[backendRole], backendScore),
+            completedIds
+          )
+        );
+      })
+      .catch(() => {
+        // Keep local roadmap state when offline or logged out.
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -688,9 +959,11 @@ export default function RoadmapPage() {
   const handleRoleChange = useCallback((role: CareerRole) => {
     setSelectedRole(role);
     setShowRolePicker(false);
+    setCustomRoleLabel(null);
     localStorage.setItem(LS_ROLE, role);
     const score = parseInt(localStorage.getItem(LS_CHECKED) ?? '0', 10);
     loadPhasesForRole(role, score);
+    persistRoadmapProgress(role, undefined, 0).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -716,6 +989,7 @@ export default function RoadmapPage() {
         .filter((s) => s.status === 'completed')
         .map((s) => s.id);
       localStorage.setItem(LS_COMPLETED(selectedRole), JSON.stringify(completedIds));
+      persistRoadmapProgress(selectedRole, completedIds, xp).catch(() => {});
       return next;
     });
 
@@ -727,6 +1001,44 @@ export default function RoadmapPage() {
     haptic('success');
     setTimeout(() => setActiveSheet(null), 300);
   }, [selectedRole]);
+
+  const handleGenerateCustom = useCallback(async (roleName: string) => {
+    setShowCustomModal(false);
+    setCustomInput('');
+    setShowRolePicker(false);
+    setGenerating(true);
+    setGenStep(0);
+    setGenDone(false);
+    setGenError(null);
+    setCustomRoleLabel(roleName);
+
+    // Auto-advance steps every 2.5 s for the UX feel
+    let step = 0;
+    const interval = setInterval(() => {
+      step = Math.min(step + 1, GEN_STEPS.length - 1);
+      setGenStep(step);
+    }, 2500);
+
+    try {
+      const result = await cariApi.generateCustomRoadmap({ role: roleName });
+      clearInterval(interval);
+      setGenStep(GEN_STEPS.length - 1);
+      setGenDone(true);
+      // Give user a moment to see completion before revealing roadmap
+      await new Promise<void>((resolve) => setTimeout(resolve, 900));
+      setPhases(result.phases as RoadmapPhase[]);
+      setGenerating(false);
+      setGenDone(false);
+      setGenStep(0);
+    } catch (err) {
+      clearInterval(interval);
+      setGenError(err instanceof Error ? err.message : 'Could not generate roadmap');
+      setGenerating(false);
+      setGenDone(false);
+      setGenStep(0);
+      setCustomRoleLabel(null);
+    }
+  }, []);
 
   const stats = computeStats(phases);
 
@@ -746,8 +1058,7 @@ export default function RoadmapPage() {
               Learning Path
             </div>
             <div style={{ fontSize: 20, fontWeight: 800, color: '#FFFFFF', marginTop: 2 }}>
-              {ROLES.find((r) => r.id === selectedRole)?.emoji}{' '}
-              {ROLES.find((r) => r.id === selectedRole)?.label}
+              {customRoleLabel ? `✨ ${customRoleLabel}` : `${ROLES.find((r) => r.id === selectedRole)?.emoji ?? ''} ${ROLES.find((r) => r.id === selectedRole)?.label ?? ''}`}
             </div>
           </div>
         </div>
@@ -786,8 +1097,10 @@ export default function RoadmapPage() {
             role={selectedRole}
             phases={phases}
             showRolePicker={showRolePicker}
+            customRoleLabel={customRoleLabel}
             onToggleRolePicker={() => setShowRolePicker(p => !p)}
             onRoleSelect={handleRoleChange}
+            onAddCustomPath={() => { setShowRolePicker(false); setShowCustomModal(true); }}
           />
         </div>
       </div>
@@ -800,7 +1113,7 @@ export default function RoadmapPage() {
         <div style={{ padding: '16px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1A1A1A', marginBottom: 2 }}>My Roadmap</h1>
-            <p style={{ fontSize: 13, color: '#6B6B6B' }}>{ROLES.find(r => r.id === selectedRole)?.emoji} {ROLES.find(r => r.id === selectedRole)?.label}</p>
+            <p style={{ fontSize: 13, color: '#6B6B6B' }}>{customRoleLabel ? `✨ ${customRoleLabel}` : `${ROLES.find(r => r.id === selectedRole)?.emoji ?? ''} ${ROLES.find(r => r.id === selectedRole)?.label ?? ''}`}</p>
           </div>
           <div style={{ position: 'relative' }}>
             <button
@@ -822,11 +1135,18 @@ export default function RoadmapPage() {
                     <button
                       key={r.id}
                       onClick={() => handleRoleChange(r.id)}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: selectedRole === r.id ? 800 : 600, background: selectedRole === r.id ? '#FFC800' : 'transparent', color: '#1A1A1A', marginBottom: 2 }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: selectedRole === r.id && !customRoleLabel ? 800 : 600, background: selectedRole === r.id && !customRoleLabel ? '#FFC800' : 'transparent', color: '#1A1A1A', marginBottom: 2 }}
                     >
                       {r.emoji} {r.label}
                     </button>
                   ))}
+                  <div style={{ height: 1, background: '#E8E0D0', margin: '4px 0' }} />
+                  <button
+                    onClick={() => { setShowRolePicker(false); setShowCustomModal(true); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: 9, border: '1.5px dashed #7C5CBF', cursor: 'pointer', fontSize: 13, fontWeight: 700, background: customRoleLabel ? '#F0EBFF' : 'transparent', color: '#7C5CBF' }}
+                  >
+                    <Sparkles size={13} /> Generate Custom Path
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -869,9 +1189,110 @@ export default function RoadmapPage() {
         {activeSheet && (
           <SkillSheet
             skill={activeSheet}
+            role={selectedRole}
             onClose={handleCloseSheet}
             onMarkComplete={handleMarkComplete}
+            resourceCache={resourceCache}
+            onCacheResources={(id, res) => setResourceCache(prev => new Map(prev).set(id, res))}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Custom roadmap generation screen */}
+      <AnimatePresence>
+        {generating && (
+          <GeneratingScreen roleName={customRoleLabel ?? ''} step={genStep} done={genDone} />
+        )}
+      </AnimatePresence>
+
+      {/* Custom path input modal */}
+      <AnimatePresence>
+        {showCustomModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[250] flex items-end lg:items-center justify-center bg-black/50 px-4"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowCustomModal(false); }}
+          >
+            <motion.div
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 40, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+              className="bg-white w-full max-w-[420px] rounded-t-3xl lg:rounded-3xl p-6"
+            >
+              <div className="flex items-center gap-3 mb-5">
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: '#F0EBFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Sparkles size={20} color="#7C5CBF" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: '#1A1A1A' }}>Generate Custom Path</div>
+                  <div style={{ fontSize: 12, color: '#6B6B6B', marginTop: 2 }}>AI builds a personalised 4-phase roadmap for you</div>
+                </div>
+                <button onClick={() => setShowCustomModal(false)} style={{ marginLeft: 'auto', color: '#ABABAB' }}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#6B6B6B', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>
+                  What role are you learning for?
+                </label>
+                <input
+                  autoFocus
+                  value={customInput}
+                  onChange={(e) => setCustomInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && customInput.trim()) void handleGenerateCustom(customInput.trim()); }}
+                  placeholder="e.g. Game Developer, Blockchain, iOS"
+                  style={{
+                    width: '100%', height: 48, borderRadius: 12, border: '1.5px solid #E8E0D0',
+                    padding: '0 14px', fontSize: 15, fontFamily: 'inherit', outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                  onFocus={(e) => { e.target.style.border = '1.5px solid #FFC800'; }}
+                  onBlur={(e) => { e.target.style.border = '1.5px solid #E8E0D0'; }}
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2 mb-5">
+                {['Game Developer', 'iOS Developer', 'Blockchain', 'AR/VR Developer', 'Embedded Systems'].map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setCustomInput(s)}
+                    style={{
+                      padding: '6px 12px', borderRadius: 99, border: '1px solid #E8E0D0',
+                      fontSize: 12, fontWeight: 600, background: customInput === s ? '#FFC800' : '#F5F0E8',
+                      color: '#1A1A1A', cursor: 'pointer',
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+
+              {genError && (
+                <div style={{ fontSize: 12, color: '#EF4444', marginBottom: 12, padding: '8px 12px', background: '#FEE2E2', borderRadius: 8 }}>
+                  {genError}
+                </div>
+              )}
+
+              <button
+                onClick={() => { if (customInput.trim()) void handleGenerateCustom(customInput.trim()); }}
+                disabled={!customInput.trim()}
+                style={{
+                  width: '100%', height: 52, borderRadius: 14,
+                  background: customInput.trim() ? '#FFC800' : '#E8E0D0',
+                  border: 'none', cursor: customInput.trim() ? 'pointer' : 'not-allowed',
+                  fontSize: 15, fontWeight: 800, color: '#1A1A1A',
+                  boxShadow: customInput.trim() ? '0 4px 0 #CC9F00' : 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
+              >
+                <Plus size={18} /> Generate My Path
+              </button>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

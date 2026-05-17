@@ -13,6 +13,17 @@ const resumeGenerationRequestSchema = z
     message: 'profileData or baseResumeText is required',
   });
 
+const resumeListQuerySchema = z.object({
+  jobId: z.string().uuid().optional(),
+  q: z.string().trim().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+const resumeIdParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
 const resumeBulletSchema = z.string().min(1);
 
 const generatedResumeSchema = z
@@ -22,6 +33,11 @@ const generatedResumeSchema = z
       targetRole: z.string().nullable(),
       tailoredForJob: z.boolean(),
       keywords: z.array(z.string()),
+      templateId: z.string().optional(),
+      matchScore: z.number().int().min(0).max(100).optional(),
+      atsOptimized: z.boolean().optional(),
+      company: z.string().nullable().optional(),
+      jobTitle: z.string().nullable().optional(),
     }),
     personal: z.object({
       fullName: z.string().min(1),
@@ -83,11 +99,41 @@ const generatedResumeSchema = z
         year: z.string().nullable(),
       })
     ),
+    extracurricular: z
+      .array(
+        z.object({
+          title: z.string().min(1),
+          organization: z.string().nullable(),
+          date: z.string().nullable(),
+          bullets: z.array(resumeBulletSchema),
+        })
+      )
+      .default([]),
   })
   .strict();
 
-export { generatedResumeSchema, resumeGenerationRequestSchema };
+const updateGeneratedResumeSchema = z
+  .object({
+    title: z.string().min(1).max(160).optional(),
+    resume: generatedResumeSchema.optional(),
+  })
+  .strict()
+  .refine((value) => value.title !== undefined || value.resume !== undefined, {
+    message: 'title or resume is required',
+  });
+
+export {
+  generatedResumeSchema,
+  resumeGenerationRequestSchema,
+  resumeIdParamSchema,
+  resumeListQuerySchema,
+  updateGeneratedResumeSchema,
+};
 export type GeneratedResume = z.infer<typeof generatedResumeSchema>;
 export type ResumeGenerationRequestInput = z.infer<
   typeof resumeGenerationRequestSchema
+>;
+export type ResumeListQueryInput = z.infer<typeof resumeListQuerySchema>;
+export type UpdateGeneratedResumeInput = z.infer<
+  typeof updateGeneratedResumeSchema
 >;

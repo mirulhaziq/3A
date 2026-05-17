@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -16,7 +16,7 @@ import { haptic } from '@/lib/haptics';
 import { useXPToast } from '@/components/XPToast';
 import { useThemeToggle } from '@/lib/use-theme-toggle';
 import { MOCK_PROFILE, type UserProfile } from '@/lib/mock-data';
-import { cariApi, cariAuth } from '@/lib/cari-api';
+import { cariApi, cariAuth, type GitHubSnapshot } from '@/lib/cari-api';
 
 // ─── Toggle Switch ────────────────────────────────────────────────────────────
 
@@ -180,13 +180,14 @@ function CuppyTipCard() {
 
 // ─── Quick Actions Card ───────────────────────────────────────────────────────
 
-function QuickActionsCard({ onAction }: { onAction: (msg: string) => void }) {
+function QuickActionsCard({ onAction, fullName }: { onAction: (msg: string) => void; fullName?: string }) {
   const router = useRouter();
+  const handle = (fullName ?? 'user').split(' ')[0]?.toLowerCase() ?? 'user';
   const actions = [
     {
       icon: FileDown, iconColor: '#FFC800',
-      label: 'Export PDF', sub: 'Standard Foundation',
-      onClick: () => onAction('PDF export started'),
+      label: 'Export PDF', sub: 'Your resume as PDF',
+      onClick: () => { window.print(); },
     },
     {
       icon: Zap, iconColor: '#7C5CBF',
@@ -195,9 +196,9 @@ function QuickActionsCard({ onAction }: { onAction: (msg: string) => void }) {
     },
     {
       icon: Share2, iconColor: '#4CAF50',
-      label: 'Share Profile', sub: `Public URL: launch.pad/${MOCK_PROFILE.personal.fullName.split(' ')[0].toLowerCase()}`,
+      label: 'Share Profile', sub: `Public URL: cari.app/${handle}`,
       onClick: () => {
-        navigator.clipboard.writeText(`https://launch.pad/${MOCK_PROFILE.personal.fullName.split(' ')[0].toLowerCase()}`).catch(() => {});
+        navigator.clipboard.writeText(`https://cari.app/${handle}`).catch(() => {});
         onAction('Profile link copied!');
       },
     },
@@ -235,119 +236,229 @@ function QuickActionsCard({ onAction }: { onAction: (msg: string) => void }) {
 function ResumePreview({ profile }: { profile: UserProfile }) {
   const { personal, summary, education, certifications, projects, experience, skills, awards, extracurricular } = profile;
 
-  const SectionHeader = ({ title }: { title: string }) => (
-    <div className="mt-5 mb-2 pb-1" style={{ borderBottom: '1.5px solid #FFC800' }}>
-      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '1px', color: '#FFC800', textTransform: 'uppercase' }}>{title}</span>
+  const Bullet = ({ text }: { text: string }) => (
+    <div style={{ display: 'flex', gap: 6, marginBottom: 2, alignItems: 'flex-start' }}>
+      <span style={{ color: '#1A1A1A', fontSize: 11, marginTop: 1, flexShrink: 0, lineHeight: 1.6 }}>▪</span>
+      <span style={{ fontSize: 11, color: '#2A2A2A', lineHeight: 1.6 }}>{text}</span>
     </div>
   );
 
+  const SectionHeader = ({ title }: { title: string }) => (
+    <div style={{ marginTop: 12, marginBottom: 4, borderBottom: '1px solid #1A1A1A', paddingBottom: 2 }}>
+      <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '1.5px', color: '#1A1A1A', textTransform: 'uppercase' }}>{title}</span>
+    </div>
+  );
+
+  const contactItems = [personal.location, personal.phone, personal.email, personal.linkedin, personal.github].filter(Boolean);
+
   return (
-    <div className="rounded-2xl p-10 max-w-2xl" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+    <div
+      id="resume-print-area"
+      style={{
+        backgroundColor: '#FFFFFF',
+        color: '#1A1A1A',
+        fontFamily: 'Georgia, "Times New Roman", serif',
+        padding: '40px 48px',
+        maxWidth: 760,
+        margin: '0 auto',
+        border: '1px solid var(--border)',
+        borderRadius: 12,
+      }}
+    >
       {/* Header */}
-      <div className="text-center mb-4">
-        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-          {personal.fullName}
+      <div style={{ textAlign: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '2px', textTransform: 'uppercase', color: '#1A1A1A', fontFamily: 'Arial, sans-serif' }}>
+          {personal.fullName || 'YOUR NAME'}
         </div>
-        <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 mt-2" style={{ fontSize: 11, color: 'var(--text-gray)' }}>
-          {[personal.location, personal.phone, personal.email, personal.linkedin, personal.github].map((v, i) => (
-            <span key={i}>{v}</span>
-          ))}
-        </div>
-        <div className="mt-3" style={{ height: 1, backgroundColor: 'var(--border)' }} />
+        {contactItems.length > 0 && (
+          <div style={{ fontSize: 10, color: '#333', marginTop: 4, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px 10px' }}>
+            {contactItems.map((v, i) => <span key={i}>{v}</span>)}
+          </div>
+        )}
+        <div style={{ marginTop: 8, height: 1, backgroundColor: '#1A1A1A' }} />
       </div>
 
-      <SectionHeader title="Summary" />
-      <p style={{ fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.7 }}>{summary}</p>
+      {/* Summary */}
+      {summary && (
+        <>
+          <SectionHeader title="Summary" />
+          <p style={{ fontSize: 11, color: '#2A2A2A', lineHeight: 1.65, marginBottom: 4 }}>{summary}</p>
+        </>
+      )}
 
-      <SectionHeader title="Education" />
-      {education.map(e => (
-        <div key={e.institution} className="mb-2">
-          <div className="flex justify-between">
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{e.institution}</span>
-            <span style={{ fontSize: 12, color: 'var(--text-light)' }}>{e.dateRange}</span>
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-gray)' }}>{e.degree} — {e.field} | {e.grade}</div>
-        </div>
-      ))}
-
-      <SectionHeader title="Certification" />
-      {certifications.map(c => (
-        <div key={c.name} className="flex justify-between mb-1">
-          <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{c.name}</span>
-          <span style={{ fontSize: 12, color: 'var(--text-light)' }}>{c.issuer} · {c.date}</span>
-        </div>
-      ))}
-
-      <SectionHeader title="Project" />
-      {projects.filter(p => p.showOnResume).map(p => (
-        <div key={p.id} className="mb-3">
-          <div className="flex justify-between mb-1">
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{p.name}</span>
-            <span style={{ fontSize: 12, color: 'var(--text-light)' }}>{p.date}</span>
-          </div>
-          {p.bullets.map((b, i) => (
-            <div key={i} className="flex gap-2 mb-0.5">
-              <span style={{ color: 'var(--text-primary)', fontSize: 12, marginTop: 2, flexShrink: 0 }}>•</span>
-              <span style={{ fontSize: 12, color: 'var(--text-gray)', lineHeight: 1.5 }}>{b}</span>
+      {/* Education */}
+      {education.length > 0 && (
+        <>
+          <SectionHeader title="Education" />
+          {education.map((e, i) => (
+            <div key={i} style={{ marginBottom: 5 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{e.institution}</span>
+                <span style={{ fontSize: 10, color: '#555' }}>{e.dateRange}</span>
+              </div>
+              <div style={{ fontSize: 11, color: '#444' }}>{[e.degree, e.field].filter(Boolean).join(' — ')}{e.grade ? ` | ${e.grade}` : ''}</div>
             </div>
           ))}
-        </div>
-      ))}
+        </>
+      )}
 
-      <SectionHeader title="Relevant Experience" />
-      {experience.map(e => (
-        <div key={e.id} className="mb-4">
-          <div className="flex justify-between mb-1">
-            <div>
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{e.company}</span>
-              <span style={{ fontSize: 12, color: 'var(--text-gray)', marginLeft: 8, fontStyle: 'italic' }}>{e.role}</span>
-            </div>
-            <span style={{ fontSize: 12, color: 'var(--text-light)' }}>{e.dateRange}</span>
-          </div>
-          {e.bullets.map((b, i) => (
-            <div key={i} className="flex gap-2 mb-0.5">
-              <span style={{ color: 'var(--text-primary)', fontSize: 12, marginTop: 2, flexShrink: 0 }}>•</span>
-              <span style={{ fontSize: 12, color: 'var(--text-gray)', lineHeight: 1.5 }}>{b}</span>
+      {/* Certification */}
+      {certifications.length > 0 && (
+        <>
+          <SectionHeader title="Certification" />
+          {certifications.map((c, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+              <span style={{ fontSize: 11, color: '#1A1A1A' }}>{c.name}</span>
+              <span style={{ fontSize: 10, color: '#555' }}>{[c.issuer, c.date].filter(Boolean).join(' · ')}</span>
             </div>
           ))}
-        </div>
-      ))}
+        </>
+      )}
 
-      <SectionHeader title="Technical Skills" />
-      {[
-        { label: 'Languages', items: skills.languages },
-        { label: 'Frameworks', items: skills.frameworks },
-        { label: 'Tools & Platforms', items: skills.tools },
-        { label: 'Soft Skills', items: skills.soft },
-      ].map(({ label, items }) => (
-        <div key={label} className="mb-1">
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{label}: </span>
-          <span style={{ fontSize: 12, color: 'var(--text-gray)' }}>{items.join(', ')}</span>
-        </div>
-      ))}
+      {/* Projects */}
+      {projects.filter(p => p.showOnResume).length > 0 && (
+        <>
+          <SectionHeader title="Project" />
+          {projects.filter(p => p.showOnResume).map((p, i) => (
+            <div key={i} style={{ marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 2 }}>
+                <span style={{ fontSize: 11, fontWeight: 700 }}>{p.name}</span>
+                <span style={{ fontSize: 10, color: '#555' }}>{p.date}</span>
+              </div>
+              {p.bullets.map((b, j) => <Bullet key={j} text={b} />)}
+            </div>
+          ))}
+        </>
+      )}
 
-      <SectionHeader title="Awards & Honours" />
-      {awards.map(a => (
-        <div key={a.name} className="flex justify-between mb-1">
-          <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{a.name}</span>
-          <span style={{ fontSize: 12, color: 'var(--text-light)' }}>{a.date}</span>
-        </div>
-      ))}
+      {/* Experience */}
+      {experience.length > 0 && (
+        <>
+          <SectionHeader title="Relevant Experience" />
+          {experience.map((e, i) => (
+            <div key={i} style={{ marginBottom: 10 }}>
+              <div style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{e.company}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 2 }}>
+                <span style={{ fontSize: 11, fontStyle: 'italic', color: '#333' }}>{e.role}{e.type ? ` (${e.type})` : ''}</span>
+                <span style={{ fontSize: 10, color: '#555' }}>{e.dateRange}</span>
+              </div>
+              {e.bullets.map((b, j) => <Bullet key={j} text={b} />)}
+            </div>
+          ))}
+        </>
+      )}
 
-      <SectionHeader title="Extracurricular" />
-      {extracurricular.map(e => (
-        <div key={e.name} className="flex justify-between mb-1">
-          <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{e.name} — {e.organization}</span>
-          <span style={{ fontSize: 12, color: 'var(--text-light)' }}>{e.date}</span>
-        </div>
-      ))}
+      {/* Technical Skills */}
+      {(skills.languages.length > 0 || skills.frameworks.length > 0 || skills.tools.length > 0 || skills.soft.length > 0) && (
+        <>
+          <SectionHeader title="Technical Skills" />
+          {[
+            { label: 'Languages', items: skills.languages },
+            { label: 'Frameworks', items: skills.frameworks },
+            { label: 'Tools & Platforms', items: skills.tools },
+            { label: 'Soft Skills', items: skills.soft },
+          ].filter(g => g.items.length > 0).map(({ label, items }) => (
+            <div key={label} style={{ fontSize: 11, marginBottom: 2, display: 'flex', gap: 4 }}>
+              <span style={{ fontWeight: 700, minWidth: 130, flexShrink: 0 }}>{label}</span>
+              <span style={{ color: '#2A2A2A' }}>: {items.join(', ')}</span>
+            </div>
+          ))}
+        </>
+      )}
 
-      <div className="mt-8 text-center" style={{ fontSize: 11, color: 'var(--text-light)' }}>Page 1 of 2</div>
+      {/* Awards */}
+      {awards.length > 0 && (
+        <>
+          <SectionHeader title="Awards & Honours" />
+          {awards.map((a, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+              <span style={{ fontSize: 11, color: '#1A1A1A' }}>{a.name}{a.issuer ? `, ${a.issuer}` : ''}</span>
+              <span style={{ fontSize: 10, color: '#555' }}>{a.date}</span>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* Extracurricular */}
+      {extracurricular.length > 0 && (
+        <>
+          <SectionHeader title="Extracurricular Involvement" />
+          {extracurricular.map((e, i) => (
+            <div key={i} style={{ marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{e.name}</span>
+                <span style={{ fontSize: 10, color: '#555' }}>{e.date}</span>
+              </div>
+              {e.organization && <div style={{ fontSize: 11, color: '#555', fontStyle: 'italic' }}>{e.organization}</div>}
+              {(e as { bullets?: string[] }).bullets?.map((b, j) => <Bullet key={j} text={b} />)}
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
+
+function extractGitHubUsername(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .replace(/^github\.com\//i, '')
+    .split(/[/?#]/)[0]
+    .trim();
+}
+
+function applyGitHubSnapshotToProfile(
+  profile: UserProfile,
+  snapshot: GitHubSnapshot
+): UserProfile {
+  const githubProjects = snapshot.topRepositories.slice(0, 6).map((repo) => ({
+    id: `github-${repo.id}`,
+    name: repo.name,
+    description: repo.description ?? 'Public GitHub project imported into Cari.',
+    tech: mergeUnique([
+      ...(repo.primaryLanguage ? [repo.primaryLanguage] : []),
+      ...repo.topics.slice(0, 5),
+    ]),
+    showOnResume: true,
+    bullets: [
+      repo.description ?? `Built and maintained ${repo.name} as a public repository.`,
+      `Repository shows ${repo.stars} stars, ${repo.forks} forks, and public project activity.`,
+    ],
+    date: new Date(repo.updatedAt).getFullYear().toString(),
+    url: repo.url.replace(/^https?:\/\//i, ''),
+  }));
+  const existingProjectIds = new Set(profile.projects.map((project) => project.id));
+  const importedProjects = githubProjects.filter(
+    (project) => !existingProjectIds.has(project.id)
+  );
+  const languageSkills = snapshot.languages.map((language) => language.name);
+  const topicSkills = snapshot.topics.map((topic) => topic.name);
+
+  return {
+    ...profile,
+    personal: {
+      ...profile.personal,
+      github: `github.com/${snapshot.username}`,
+    },
+    skills: {
+      ...profile.skills,
+      languages: mergeUnique([...profile.skills.languages, ...languageSkills]),
+      tools: mergeUnique([...profile.skills.tools, 'GitHub']),
+      frameworks: mergeUnique([...profile.skills.frameworks, ...topicSkills.slice(0, 8)]),
+    },
+    projects: [...importedProjects, ...profile.projects],
+    skillMatch: Math.min(100, Math.max(profile.skillMatch, 70 + snapshot.languages.length)),
+  };
+}
+
+function mergeUnique(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -360,6 +471,14 @@ export default function ProfilePage() {
   const [resumeSubTab, setResumeSubTab] = useState<'foundation' | 'tailored'>('foundation');
   const [notifications, setNotifications] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  const [githubSyncing, setGithubSyncing] = useState(false);
+  const [githubSummary, setGithubSummary] = useState<GitHubSnapshot | null>(null);
+  const [aiEnhancing, setAiEnhancing] = useState<Record<string, boolean>>({});
+  const [cvImporting, setCvImporting] = useState(false);
+  const cvUploadRef = useRef<HTMLInputElement>(null);
+  const [newSkillInputs, setNewSkillInputs] = useState<Record<string, string>>({ languages: '', frameworks: '', tools: '', soft: '' });
+  const [addingSection, setAddingSection] = useState<string | null>(null);
+  const [newItemDraft, setNewItemDraft] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let active = true;
@@ -367,17 +486,28 @@ export default function ProfilePage() {
       .getProfile()
       .then(({ profile }) => {
         if (!active) return;
-        const profileData = profile.profileData as Partial<UserProfile>;
+        const profileData = profile.profileData as Partial<UserProfile> & {
+          githubSnapshot?: GitHubSnapshot;
+        };
+        setGithubSummary(profileData.githubSnapshot ?? null);
         setEditData({
           ...MOCK_PROFILE,
           ...profileData,
+          summary: (profileData.summary as string | undefined) ?? '',
+          projects: (profileData.projects as UserProfile['projects'] | undefined) ?? [],
+          experience: (profileData.experience as UserProfile['experience'] | undefined) ?? [],
+          skills: (profileData.skills as UserProfile['skills'] | undefined) ?? { languages: [], frameworks: [], tools: [], soft: [] },
+          education: (profileData.education as UserProfile['education'] | undefined) ?? [],
+          certifications: (profileData.certifications as UserProfile['certifications'] | undefined) ?? [],
+          awards: (profileData.awards as UserProfile['awards'] | undefined) ?? [],
+          extracurricular: (profileData.extracurricular as UserProfile['extracurricular'] | undefined) ?? [],
           personal: {
             ...MOCK_PROFILE.personal,
             ...(profileData.personal ?? {}),
-            fullName: profile.fullName ?? profileData.personal?.fullName ?? MOCK_PROFILE.personal.fullName,
+            fullName: profile.fullName ?? (profileData.personal as { fullName?: string } | undefined)?.fullName ?? '',
             email: profile.email,
           },
-          targetRole: profile.targetRole ?? profileData.targetRole ?? MOCK_PROFILE.targetRole,
+          targetRole: profile.targetRole ?? (profileData as { targetRole?: string }).targetRole ?? '',
           onboarded: profile.onboarded,
           xp: profile.xp,
           streak: profile.streak,
@@ -400,6 +530,24 @@ export default function ProfilePage() {
     setTimeout(() => setToast(null), 2500);
   }, []);
 
+  const saveProfileToSupabase = useCallback(async (data: UserProfile): Promise<void> => {
+    await cariApi.updateProfile({
+      fullName: data.personal.fullName || null,
+      targetRole: data.targetRole || null,
+      profileData: data as unknown as Record<string, unknown>,
+      onboarded: data.onboarded,
+      xp: data.xp,
+      streak: data.streak,
+      level: String(data.level) || 'NEWCOMER',
+      atsScore: Math.min(100, Math.max(0, Math.round(data.atsScore))),
+      skillMatch: Math.min(100, Math.max(0, Math.round(data.skillMatch))),
+    });
+    // Signal all pages that profile has changed so they re-fetch
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cari:profile:updated'));
+    }
+  }, []);
+
   const toggleSection = (id: string) => {
     setExpandedSections(prev =>
       prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
@@ -408,22 +556,189 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     try {
-      await cariApi.updateProfile({
-        fullName: editData.personal.fullName,
-        targetRole: editData.targetRole,
-        profileData: editData as unknown as Record<string, unknown>,
-        onboarded: editData.onboarded,
-        xp: editData.xp,
-        streak: editData.streak,
-        level: String(editData.level),
-        atsScore: editData.atsScore,
-        skillMatch: editData.skillMatch,
-      });
+      await saveProfileToSupabase(editData);
       setIsEditMode(false);
       showToast('Profile saved!');
       haptic('success');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not save profile');
+    }
+  };
+
+  const handleGithubSync = async () => {
+    const username = extractGitHubUsername(editData.personal.github);
+    if (!username) {
+      showToast('Add your GitHub username first');
+      return;
+    }
+
+    setGithubSyncing(true);
+    try {
+      const { github } = await cariApi.scrapeGitHub({
+        username,
+        includeForks: false,
+        maxRepos: 30,
+      });
+      const nextProfile = applyGitHubSnapshotToProfile(editData, github.snapshot);
+      await saveProfileToSupabase({
+        ...nextProfile,
+        ...({ githubSnapshot: github.snapshot } as unknown as UserProfile),
+      } as UserProfile);
+      setEditData(nextProfile);
+      setGithubSummary(github.snapshot);
+      showToast('GitHub synced into your profile');
+      haptic('success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not sync GitHub');
+    } finally {
+      setGithubSyncing(false);
+    }
+  };
+
+  const applyParsedResume = (r: import('@/lib/cari-api').GeneratedResume) => {
+    setEditData(prev => ({
+      ...prev,
+      summary: r.summary || prev.summary,
+      skills: {
+        languages: r.skills.languages.length ? r.skills.languages : prev.skills.languages,
+        frameworks: r.skills.frameworks.length ? r.skills.frameworks : prev.skills.frameworks,
+        tools: r.skills.toolsAndPlatforms.length ? r.skills.toolsAndPlatforms : prev.skills.tools,
+        soft: r.skills.softSkills.length ? r.skills.softSkills : prev.skills.soft,
+      },
+      projects: r.projects.length ? r.projects.map((p, i) => ({
+        id: `resume-project-${i}`,
+        name: p.name,
+        description: p.description ?? '',
+        tech: p.techStack,
+        showOnResume: true,
+        bullets: p.bullets,
+        date: '',
+        url: p.repoUrl?.replace(/^https?:\/\//i, '') ?? '',
+      })) : prev.projects,
+      experience: r.experience.length ? r.experience.map((e, i) => ({
+        id: `resume-experience-${i}`,
+        role: e.role,
+        company: e.company,
+        type: e.type ?? '',
+        dateRange: [e.startDate, e.endDate].filter(Boolean).join(' – '),
+        bullets: e.bullets,
+      })) : prev.experience,
+      education: r.education.length ? r.education.map(e => ({
+        institution: e.institution,
+        degree: e.degree ?? '',
+        field: e.field ?? '',
+        dateRange: [e.startDate, e.endDate].filter(Boolean).join(' – '),
+        grade: e.grade ?? '',
+      })) : prev.education,
+      certifications: r.certifications.length ? r.certifications.map(c => ({
+        name: c.name,
+        issuer: c.issuer ?? '',
+        date: c.date ?? '',
+      })) : prev.certifications,
+      awards: r.awards.length ? r.awards.map(a => ({
+        name: a.title,
+        issuer: a.issuer ?? '',
+        date: a.year ?? '',
+      })) : prev.awards,
+      personal: {
+        ...prev.personal,
+        fullName: r.personal.fullName || prev.personal.fullName,
+        location: r.personal.location ?? prev.personal.location,
+        phone: r.personal.phone ?? prev.personal.phone,
+        linkedin: r.personal.linkedin ?? prev.personal.linkedin,
+        github: r.personal.github ?? prev.personal.github,
+      },
+    }));
+  };
+
+  const handleUploadAndImport = async (file: File) => {
+    setCvImporting(true);
+    try {
+      const { parsed } = await cariApi.parseResume(file);
+      applyParsedResume(parsed.resume);
+      showToast('CV imported! Review your profile and save.');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not parse CV — try a PDF or DOCX');
+    } finally {
+      setCvImporting(false);
+    }
+  };
+
+  const handleImportFromCv = async () => {
+    setCvImporting(true);
+    try {
+      const { parsed } = await cariApi.importFromCv();
+      applyParsedResume(parsed.resume);
+      showToast('CV imported! Review your profile and save.');
+    } catch {
+      // No stored CV — prompt user to upload one instead
+      cvUploadRef.current?.click();
+    } finally {
+      setCvImporting(false);
+    }
+  };
+
+  const handleEnhanceSummary = async () => {
+    if (!editData.summary.trim()) { showToast('Add a summary first before enhancing'); return; }
+    setAiEnhancing(prev => ({ ...prev, summary: true }));
+    try {
+      const result = await cariApi.enhanceSection({
+        sectionType: 'summary',
+        content: editData.summary,
+        context: editData.targetRole || undefined,
+      });
+      const next = { ...editData, summary: result.enhanced as string };
+      setEditData(next);
+      await saveProfileToSupabase(next);
+      showToast('Summary enhanced & saved!');
+    } catch {
+      showToast('Could not enhance summary — try again');
+    } finally {
+      setAiEnhancing(prev => ({ ...prev, summary: false }));
+    }
+  };
+
+  const handleEnhanceExperience = async (expId: string, bullets: string[]) => {
+    setAiEnhancing(prev => ({ ...prev, [`exp-${expId}`]: true }));
+    try {
+      const result = await cariApi.enhanceSection({
+        sectionType: 'experience_bullets',
+        content: bullets,
+        context: editData.targetRole || undefined,
+      });
+      const next = {
+        ...editData,
+        experience: editData.experience.map(e => e.id === expId ? { ...e, bullets: result.enhanced as string[] } : e),
+      };
+      setEditData(next);
+      await saveProfileToSupabase(next);
+      showToast('Experience enhanced & saved!');
+    } catch {
+      showToast('Could not enhance bullets — try again');
+    } finally {
+      setAiEnhancing(prev => ({ ...prev, [`exp-${expId}`]: false }));
+    }
+  };
+
+  const handleEnhanceProject = async (projectId: string, bullets: string[]) => {
+    setAiEnhancing(prev => ({ ...prev, [`proj-${projectId}`]: true }));
+    try {
+      const result = await cariApi.enhanceSection({
+        sectionType: 'project_bullets',
+        content: bullets,
+        context: editData.targetRole || undefined,
+      });
+      const next = {
+        ...editData,
+        projects: editData.projects.map(p => p.id === projectId ? { ...p, bullets: result.enhanced as string[] } : p),
+      };
+      setEditData(next);
+      await saveProfileToSupabase(next);
+      showToast('Project enhanced & saved!');
+    } catch {
+      showToast('Could not enhance project — try again');
+    } finally {
+      setAiEnhancing(prev => ({ ...prev, [`proj-${projectId}`]: false }));
     }
   };
 
@@ -450,7 +765,7 @@ export default function ProfilePage() {
     <div className="flex flex-col gap-4">
       <ProfileHealthCard />
       <CuppyTipCard />
-      <QuickActionsCard onAction={showToast} />
+      <QuickActionsCard onAction={showToast} fullName={editData.personal.fullName} />
     </div>
   );
 
@@ -491,25 +806,25 @@ export default function ProfilePage() {
             whiteSpace: 'nowrap',
           }}
         >
-          LVL {MOCK_PROFILE.level}
+          LVL {editData.level}
         </div>
       </div>
 
       <div className={cn(mobile ? 'flex flex-col items-center mt-2' : 'flex-1')}>
         <div style={{ fontSize: mobile ? 20 : 22, fontWeight: 700, color: 'var(--text-primary)' }}>
-          {MOCK_PROFILE.personal.fullName}
+          {editData.personal.fullName || 'Your Name'}
         </div>
         <div style={{ fontSize: 14, color: 'var(--text-gray)', marginTop: 4 }}>
-          {MOCK_PROFILE.personal.targetRole}
+          {editData.targetRole || 'Set your target role'}
         </div>
         <div className={cn('flex gap-2 mt-3', mobile && 'justify-center flex-wrap')}>
           <div className="flex items-center gap-1.5 rounded-full px-3 py-1.5" style={{ backgroundColor: '#FFF8E1', border: '1px solid #FFC800' }}>
             <Flame size={13} color="#F59E0B" />
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#F59E0B' }}>{MOCK_PROFILE.streak} Day Streak</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#F59E0B' }}>{editData.streak} Day Streak</span>
           </div>
           <div className="flex items-center gap-1.5 rounded-full px-3 py-1.5" style={{ backgroundColor: '#F0EBFF', border: '1px solid #7C5CBF' }}>
             <span style={{ fontSize: 13 }}>⭐</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#7C5CBF' }}>{MOCK_PROFILE.xp.toLocaleString()} XP</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#7C5CBF' }}>{editData.xp.toLocaleString()} XP</span>
           </div>
         </div>
       </div>
@@ -577,15 +892,66 @@ export default function ProfilePage() {
         transition={{ duration: 0.2 }}
         className="flex flex-col gap-3 mt-6"
       >
+        {/* CV Import Banner */}
+        {editData.projects.length === 0 && editData.experience.length === 0 && editData.skills.languages.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl p-4"
+            style={{ backgroundColor: '#FFF8E1', border: '2px solid #FFC800' }}
+          >
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3">
+                <span style={{ fontSize: 24 }}>📄</span>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#1A1A1A' }}>Your profile is empty</div>
+                  <div style={{ fontSize: 13, color: '#6B6B6B' }}>Upload your CV to auto-fill all sections</div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => cvUploadRef.current?.click()}
+                  disabled={cvImporting}
+                  className="rounded-xl font-bold px-4 py-2"
+                  style={{ backgroundColor: '#FFC800', color: '#1A1A1A', fontSize: 13, border: 'none', cursor: cvImporting ? 'wait' : 'pointer', opacity: cvImporting ? 0.7 : 1, boxShadow: '0 3px 0 #CC9F00' }}
+                >
+                  {cvImporting ? 'Importing...' : '⬆ Upload CV'}
+                </button>
+              </div>
+            </div>
+            {cvImporting && (
+              <div style={{ fontSize: 12, color: '#6B6B6B', marginTop: 8 }}>
+                Parsing your CV with AI — this takes ~10 seconds...
+              </div>
+            )}
+          </motion.div>
+        )}
+        <input
+          ref={cvUploadRef}
+          type="file"
+          accept=".pdf,.docx"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0];
+            if (file) handleUploadAndImport(file);
+            e.target.value = '';
+          }}
+        />
+
         {/* Professional Summary */}
         <AccordionSection id="summary" title="Professional Summary" icon={FileText} expanded={expandedSections.includes('summary')} onToggle={toggleSection} delay={0}>
           {!isEditMode ? (
             <>
-              <div className="rounded-xl p-4 text-sm leading-relaxed" style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                {editData.summary}
+              <div className="rounded-xl p-4 text-sm leading-relaxed" style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)', color: editData.summary ? 'var(--text-primary)' : 'var(--text-light)' }}>
+                {editData.summary || 'No summary yet. Click Edit Profile to add your professional summary.'}
               </div>
-              <button onClick={() => showToast('AI improvement coming soon — connect API first')} className="flex items-center gap-1.5 mt-3 font-semibold" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFC800', fontSize: 13 }}>
-                <Zap size={14} />✦ Improve with AI
+              <button
+                onClick={handleEnhanceSummary}
+                disabled={aiEnhancing.summary}
+                className="flex items-center gap-1.5 mt-3 font-semibold"
+                style={{ background: 'none', border: 'none', cursor: aiEnhancing.summary ? 'wait' : 'pointer', color: '#FFC800', fontSize: 13, opacity: aiEnhancing.summary ? 0.6 : 1 }}
+              >
+                <Zap size={14} />{aiEnhancing.summary ? 'Enhancing...' : '✦ Improve with AI'}
               </button>
             </>
           ) : (
@@ -608,10 +974,18 @@ export default function ProfilePage() {
                 animate={{ scale: [1, 1.4, 1] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
               />
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#1CB0F6' }}>GitHub Sync Active</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#1CB0F6' }}>
+                {githubSummary
+                  ? `GitHub synced: ${githubSummary.stats.sourceRepoCount} repos, ${githubSummary.languages.length} languages`
+                  : 'GitHub sync ready'}
+              </span>
             </div>
-            <button onClick={() => showToast('Refreshing GitHub...')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#1CB0F6', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Refresh Now
+            <button
+              onClick={handleGithubSync}
+              disabled={githubSyncing}
+              style={{ background: 'none', border: 'none', cursor: githubSyncing ? 'wait' : 'pointer', fontSize: 12, fontWeight: 700, color: '#1CB0F6', textTransform: 'uppercase', letterSpacing: '0.5px', opacity: githubSyncing ? 0.7 : 1 }}
+            >
+              {githubSyncing ? 'Syncing...' : 'Refresh Now'}
             </button>
           </div>
 
@@ -629,6 +1003,16 @@ export default function ProfilePage() {
                   <span style={{ fontSize: 12, color: 'var(--text-gray)' }}>Feature on resume</span>
                   <Toggle on={project.showOnResume} onChange={() => setEditData(prev => ({ ...prev, projects: prev.projects.map(p => p.id === project.id ? { ...p, showOnResume: !p.showOnResume } : p) }))} />
                 </div>
+                {project.bullets.length > 0 && (
+                  <button
+                    onClick={() => handleEnhanceProject(project.id, project.bullets)}
+                    disabled={!!aiEnhancing[`proj-${project.id}`]}
+                    className="flex items-center gap-1.5 mt-2 font-semibold"
+                    style={{ background: 'none', border: 'none', cursor: aiEnhancing[`proj-${project.id}`] ? 'wait' : 'pointer', color: '#FFC800', fontSize: 12, opacity: aiEnhancing[`proj-${project.id}`] ? 0.6 : 1, padding: 0 }}
+                  >
+                    <Zap size={12} />{aiEnhancing[`proj-${project.id}`] ? 'Enhancing...' : '✦ Improve with AI'}
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -654,7 +1038,40 @@ export default function ProfilePage() {
                     {isEditMode && <button onClick={() => setEditData(prev => ({ ...prev, skills: { ...prev.skills, [key]: prev.skills[key].filter(s => s !== skill) } }))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)', fontSize: 12, marginLeft: 2, display: 'flex', alignItems: 'center' }}>×</button>}
                   </div>
                 ))}
-                {isEditMode && <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFC800', fontSize: 13, fontWeight: 600 }}>+ Add</button>}
+                {isEditMode && (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={newSkillInputs[key] ?? ''}
+                      onChange={e => setNewSkillInputs(prev => ({ ...prev, [key]: e.target.value }))}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          const val = newSkillInputs[key]?.trim();
+                          if (val && !editData.skills[key].includes(val)) {
+                            setEditData(prev => ({ ...prev, skills: { ...prev.skills, [key]: [...prev.skills[key], val] } }));
+                          }
+                          setNewSkillInputs(prev => ({ ...prev, [key]: '' }));
+                        }
+                      }}
+                      placeholder={`Add ${label.toLowerCase()}...`}
+                      className="rounded-full px-3 py-1"
+                      style={{ fontSize: 13, border: '1.5px dashed #FFC800', backgroundColor: 'var(--bg)', color: 'var(--text-primary)', outline: 'none', minWidth: 130 }}
+                    />
+                    {(newSkillInputs[key] ?? '').trim() && (
+                      <button
+                        onClick={() => {
+                          const val = newSkillInputs[key]?.trim();
+                          if (val && !editData.skills[key].includes(val)) {
+                            setEditData(prev => ({ ...prev, skills: { ...prev.skills, [key]: [...prev.skills[key], val] } }));
+                          }
+                          setNewSkillInputs(prev => ({ ...prev, [key]: '' }));
+                        }}
+                        className="rounded-full w-7 h-7 flex items-center justify-center font-bold"
+                        style={{ fontSize: 14, backgroundColor: '#FFC800', color: '#1A1A1A', border: 'none', cursor: 'pointer', flexShrink: 0 }}
+                      >+</button>
+                    )}
+                  </div>
+                )}
               </div>
               {idx < arr.length - 1 && <div className="mb-3" style={{ height: 1, backgroundColor: 'var(--border)' }} />}
             </div>
@@ -669,33 +1086,87 @@ export default function ProfilePage() {
         <AccordionSection id="experience" title="Experience" icon={Briefcase} expanded={expandedSections.includes('experience')} onToggle={toggleSection} delay={0.18}>
           {editData.experience.map((exp, idx) => (
             <div key={exp.id}>
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{exp.role}</div>
-                  <div style={{ fontSize: 13, color: 'var(--text-gray)', marginTop: 2 }}>{exp.company}</div>
-                </div>
-                <div className="text-right flex-shrink-0 ml-4">
-                  <div style={{ fontSize: 13, color: 'var(--text-light)' }}>{exp.dateRange}</div>
-                  <div className="mt-1 rounded-full px-2 py-0.5 inline-block" style={{ fontSize: 11, backgroundColor: '#E8F7FF', color: '#1CB0F6' }}>{exp.type}</div>
-                </div>
-              </div>
-              <div className="flex flex-col gap-1.5 mb-2">
-                {exp.bullets.map((b, i) => (
-                  <div key={i} className="flex gap-2 items-start">
-                    <div className="rounded-full flex-shrink-0 mt-1.5" style={{ width: 5, height: 5, backgroundColor: '#FFC800' }} />
-                    <span style={{ fontSize: 13, color: 'var(--text-gray)', lineHeight: 1.5 }}>{b}</span>
+              {isEditMode ? (
+                <div className="rounded-xl p-3 mb-3" style={{ backgroundColor: 'var(--bg)', border: '1.5px solid var(--border)' }}>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    {[['role', 'Role / Title'], ['company', 'Company'], ['type', 'Type (Full-time / Internship)'], ['dateRange', 'Date Range']].map(([field, placeholder]) => (
+                      <input key={field} value={(exp as Record<string, string>)[field] ?? ''} onChange={e => setEditData(prev => ({ ...prev, experience: prev.experience.map(ex => ex.id === exp.id ? { ...ex, [field]: e.target.value } : ex) }))} placeholder={placeholder} className="rounded-lg px-3 py-1.5 col-span-1" style={{ fontSize: 13, border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none' }} />
+                    ))}
                   </div>
-                ))}
-              </div>
-              <button onClick={() => showToast('AI improvement coming soon — connect API first')} className="flex items-center gap-1.5 mb-3 font-semibold" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFC800', fontSize: 13 }}>
-                <Zap size={14} />✦ Improve with AI
+                  <div className="flex flex-col gap-1.5 mb-2">
+                    {exp.bullets.map((b, i) => (
+                      <div key={i} className="flex gap-2 items-center">
+                        <div className="rounded-full flex-shrink-0" style={{ width: 5, height: 5, backgroundColor: '#FFC800', marginTop: 0 }} />
+                        <input value={b} onChange={e => setEditData(prev => ({ ...prev, experience: prev.experience.map(ex => ex.id === exp.id ? { ...ex, bullets: ex.bullets.map((bul, bi) => bi === i ? e.target.value : bul) } : ex) }))} className="flex-1 rounded-lg px-3 py-1" style={{ fontSize: 13, border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none' }} />
+                        <button onClick={() => setEditData(prev => ({ ...prev, experience: prev.experience.map(ex => ex.id === exp.id ? { ...ex, bullets: ex.bullets.filter((_, bi) => bi !== i) } : ex) }))} style={{ background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}><Trash2 size={13} color="#FF4B4B" /></button>
+                      </div>
+                    ))}
+                    <button onClick={() => setEditData(prev => ({ ...prev, experience: prev.experience.map(ex => ex.id === exp.id ? { ...ex, bullets: [...ex.bullets, ''] } : ex) }))} className="flex items-center gap-1 mt-1 font-semibold" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1CB0F6', fontSize: 12 }}>
+                      <Plus size={12} color="#1CB0F6" />Add bullet
+                    </button>
+                  </div>
+                  <button onClick={() => setEditData(prev => ({ ...prev, experience: prev.experience.filter(ex => ex.id !== exp.id) }))} className="flex items-center gap-1 font-semibold" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FF4B4B', fontSize: 12 }}>
+                    <Trash2 size={13} />Remove experience
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{exp.role}</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-gray)', marginTop: 2 }}>{exp.company}</div>
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-4">
+                      <div style={{ fontSize: 13, color: 'var(--text-light)' }}>{exp.dateRange}</div>
+                      <div className="mt-1 rounded-full px-2 py-0.5 inline-block" style={{ fontSize: 11, backgroundColor: '#E8F7FF', color: '#1CB0F6' }}>{exp.type}</div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5 mb-2">
+                    {exp.bullets.map((b, i) => (
+                      <div key={i} className="flex gap-2 items-start">
+                        <div className="rounded-full flex-shrink-0 mt-1.5" style={{ width: 5, height: 5, backgroundColor: '#FFC800' }} />
+                        <span style={{ fontSize: 13, color: 'var(--text-gray)', lineHeight: 1.5 }}>{b}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              <button
+                onClick={() => handleEnhanceExperience(exp.id, exp.bullets)}
+                disabled={!!aiEnhancing[`exp-${exp.id}`]}
+                className="flex items-center gap-1.5 mb-3 font-semibold"
+                style={{ background: 'none', border: 'none', cursor: aiEnhancing[`exp-${exp.id}`] ? 'wait' : 'pointer', color: '#FFC800', fontSize: 13, opacity: aiEnhancing[`exp-${exp.id}`] ? 0.6 : 1 }}
+              >
+                <Zap size={14} />{aiEnhancing[`exp-${exp.id}`] ? 'Enhancing...' : '✦ Improve with AI'}
               </button>
-              {idx < editData.experience.length - 1 && <div className="mb-4" style={{ height: 1, backgroundColor: 'var(--border)' }} />}
+              {idx < editData.experience.length - 1 && !isEditMode && <div className="mb-4" style={{ height: 1, backgroundColor: 'var(--border)' }} />}
             </div>
           ))}
-          <button className="flex items-center gap-2 mt-2 font-semibold" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFC800', fontSize: 13 }}>
-            <Plus size={16} color="#FFC800" />Add Experience
-          </button>
+          {isEditMode && (
+            addingSection === 'experience' ? (
+              <div className="rounded-xl p-3 mt-2" style={{ backgroundColor: 'var(--bg)', border: '1.5px dashed #FFC800' }}>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  {[['role', 'Role / Title'], ['company', 'Company'], ['type', 'Type'], ['dateRange', 'Date Range']].map(([field, placeholder]) => (
+                    <input key={field} value={newItemDraft[field] ?? ''} onChange={e => setNewItemDraft(prev => ({ ...prev, [field]: e.target.value }))} placeholder={placeholder} className="rounded-lg px-3 py-1.5" style={{ fontSize: 13, border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none' }} />
+                  ))}
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => { if (!newItemDraft.role) return; setEditData(prev => ({ ...prev, experience: [...prev.experience, { id: `exp-${Date.now()}`, role: newItemDraft.role ?? '', company: newItemDraft.company ?? '', type: newItemDraft.type ?? '', dateRange: newItemDraft.dateRange ?? '', bullets: [] }] })); setAddingSection(null); setNewItemDraft({}); }} className="rounded-lg px-3 py-1.5 font-bold" style={{ fontSize: 13, backgroundColor: '#FFC800', color: '#1A1A1A', border: 'none', cursor: 'pointer' }}>Add</button>
+                  <button onClick={() => { setAddingSection(null); setNewItemDraft({}); }} className="rounded-lg px-3 py-1.5" style={{ fontSize: 13, backgroundColor: 'var(--bg-card)', color: 'var(--text-gray)', border: '1px solid var(--border)', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setAddingSection('experience')} className="flex items-center gap-2 mt-2 font-semibold" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFC800', fontSize: 13 }}>
+                <Plus size={16} color="#FFC800" />Add Experience
+              </button>
+            )
+          )}
+          {!isEditMode && (
+            <button className="flex items-center gap-2 mt-2 font-semibold" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFC800', fontSize: 13 }}
+              onClick={() => { setIsEditMode(true); setAddingSection('experience'); }}>
+              <Plus size={16} color="#FFC800" />Add Experience
+            </button>
+          )}
         </AccordionSection>
 
         {/* Education */}
@@ -716,36 +1187,79 @@ export default function ProfilePage() {
         {/* Certifications */}
         <AccordionSection id="certifications" title="Certifications" icon={Award} expanded={expandedSections.includes('certifications')} onToggle={toggleSection} delay={0.30}>
           {editData.certifications.map((cert, idx) => (
-            <div key={cert.name} className="flex justify-between items-center py-2.5" style={{ borderBottom: idx < editData.certifications.length - 1 ? '1px solid var(--border)' : 'none' }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{cert.name}</div>
-                <div style={{ fontSize: 13, color: 'var(--text-gray)' }}>{cert.issuer}</div>
+            <div key={`${cert.name}-${idx}`} className="flex justify-between items-center py-2.5" style={{ borderBottom: idx < editData.certifications.length - 1 ? '1px solid var(--border)' : 'none' }}>
+              <div className="flex-1 min-w-0">
+                {isEditMode ? (
+                  <div className="flex gap-2">
+                    <input value={cert.name} onChange={e => setEditData(prev => ({ ...prev, certifications: prev.certifications.map((c, ci) => ci === idx ? { ...c, name: e.target.value } : c) }))} placeholder="Certification name" className="flex-1 rounded-lg px-2 py-1" style={{ fontSize: 13, border: '1px solid var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text-primary)', outline: 'none' }} />
+                    <input value={cert.issuer} onChange={e => setEditData(prev => ({ ...prev, certifications: prev.certifications.map((c, ci) => ci === idx ? { ...c, issuer: e.target.value } : c) }))} placeholder="Issuer" className="w-28 rounded-lg px-2 py-1" style={{ fontSize: 13, border: '1px solid var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text-primary)', outline: 'none' }} />
+                    <input value={cert.date} onChange={e => setEditData(prev => ({ ...prev, certifications: prev.certifications.map((c, ci) => ci === idx ? { ...c, date: e.target.value } : c) }))} placeholder="Date" className="w-24 rounded-lg px-2 py-1" style={{ fontSize: 13, border: '1px solid var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text-primary)', outline: 'none' }} />
+                    <button onClick={() => setEditData(prev => ({ ...prev, certifications: prev.certifications.filter((_, ci) => ci !== idx) }))} style={{ background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}><Trash2 size={14} color="#FF4B4B" /></button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{cert.name}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-gray)' }}>{cert.issuer}</div>
+                  </>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <span style={{ fontSize: 13, color: 'var(--text-light)' }}>{cert.date}</span>
-                {isEditMode && <button style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={14} color="#FF4B4B" /></button>}
-              </div>
+              {!isEditMode && <span style={{ fontSize: 13, color: 'var(--text-light)', flexShrink: 0, marginLeft: 8 }}>{cert.date}</span>}
             </div>
           ))}
-          <button className="flex items-center gap-2 mt-3 font-semibold" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFC800', fontSize: 13 }}>
-            <Plus size={16} color="#FFC800" />Add Certification
-          </button>
+          {isEditMode && (
+            addingSection === 'cert' ? (
+              <div className="flex gap-2 mt-3 flex-wrap">
+                {[['cert_name', 'Certification name'], ['cert_issuer', 'Issuer'], ['cert_date', 'Date']].map(([field, placeholder]) => (
+                  <input key={field} value={newItemDraft[field] ?? ''} onChange={e => setNewItemDraft(prev => ({ ...prev, [field]: e.target.value }))} placeholder={placeholder} className="rounded-lg px-2 py-1.5 flex-1" style={{ fontSize: 13, border: '1.5px dashed #FFC800', backgroundColor: 'var(--bg)', color: 'var(--text-primary)', outline: 'none', minWidth: 80 }} />
+                ))}
+                <button onClick={() => { if (!newItemDraft.cert_name) return; setEditData(prev => ({ ...prev, certifications: [...prev.certifications, { name: newItemDraft.cert_name ?? '', issuer: newItemDraft.cert_issuer ?? '', date: newItemDraft.cert_date ?? '' }] })); setAddingSection(null); setNewItemDraft({}); }} className="rounded-lg px-3 py-1.5 font-bold" style={{ fontSize: 13, backgroundColor: '#FFC800', color: '#1A1A1A', border: 'none', cursor: 'pointer' }}>Add</button>
+                <button onClick={() => { setAddingSection(null); setNewItemDraft({}); }} className="rounded-lg px-3 py-1.5" style={{ fontSize: 13, backgroundColor: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-gray)', cursor: 'pointer' }}>Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setAddingSection('cert')} className="flex items-center gap-2 mt-3 font-semibold" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFC800', fontSize: 13 }}>
+                <Plus size={16} color="#FFC800" />Add Certification
+              </button>
+            )
+          )}
         </AccordionSection>
 
         {/* Awards */}
         <AccordionSection id="awards" title="Awards" icon={Trophy} expanded={expandedSections.includes('awards')} onToggle={toggleSection} delay={0.36}>
           {editData.awards.map((award, idx) => (
-            <div key={award.name} className="flex justify-between items-center py-2.5" style={{ borderBottom: idx < editData.awards.length - 1 ? '1px solid var(--border)' : 'none' }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{award.name}</div>
-                <div style={{ fontSize: 13, color: 'var(--text-gray)' }}>{award.issuer}</div>
+            <div key={`${award.name}-${idx}`} className="flex justify-between items-center py-2.5" style={{ borderBottom: idx < editData.awards.length - 1 ? '1px solid var(--border)' : 'none' }}>
+              <div className="flex-1 min-w-0">
+                {isEditMode ? (
+                  <div className="flex gap-2">
+                    <input value={award.name} onChange={e => setEditData(prev => ({ ...prev, awards: prev.awards.map((a, ai) => ai === idx ? { ...a, name: e.target.value } : a) }))} placeholder="Award name" className="flex-1 rounded-lg px-2 py-1" style={{ fontSize: 13, border: '1px solid var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text-primary)', outline: 'none' }} />
+                    <input value={award.issuer} onChange={e => setEditData(prev => ({ ...prev, awards: prev.awards.map((a, ai) => ai === idx ? { ...a, issuer: e.target.value } : a) }))} placeholder="Issuer" className="w-28 rounded-lg px-2 py-1" style={{ fontSize: 13, border: '1px solid var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text-primary)', outline: 'none' }} />
+                    <input value={award.date} onChange={e => setEditData(prev => ({ ...prev, awards: prev.awards.map((a, ai) => ai === idx ? { ...a, date: e.target.value } : a) }))} placeholder="Year" className="w-20 rounded-lg px-2 py-1" style={{ fontSize: 13, border: '1px solid var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text-primary)', outline: 'none' }} />
+                    <button onClick={() => setEditData(prev => ({ ...prev, awards: prev.awards.filter((_, ai) => ai !== idx) }))} style={{ background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}><Trash2 size={14} color="#FF4B4B" /></button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{award.name}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-gray)' }}>{award.issuer}</div>
+                  </>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <span style={{ fontSize: 13, color: 'var(--text-light)' }}>{award.date}</span>
-                {isEditMode && <button style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={14} color="#FF4B4B" /></button>}
-              </div>
+              {!isEditMode && <span style={{ fontSize: 13, color: 'var(--text-light)', flexShrink: 0, marginLeft: 8 }}>{award.date}</span>}
             </div>
           ))}
+          {isEditMode && (
+            addingSection === 'award' ? (
+              <div className="flex gap-2 mt-3 flex-wrap">
+                {[['award_name', 'Award name'], ['award_issuer', 'Issuer'], ['award_date', 'Year']].map(([field, placeholder]) => (
+                  <input key={field} value={newItemDraft[field] ?? ''} onChange={e => setNewItemDraft(prev => ({ ...prev, [field]: e.target.value }))} placeholder={placeholder} className="rounded-lg px-2 py-1.5 flex-1" style={{ fontSize: 13, border: '1.5px dashed #FFC800', backgroundColor: 'var(--bg)', color: 'var(--text-primary)', outline: 'none', minWidth: 80 }} />
+                ))}
+                <button onClick={() => { if (!newItemDraft.award_name) return; setEditData(prev => ({ ...prev, awards: [...prev.awards, { name: newItemDraft.award_name ?? '', issuer: newItemDraft.award_issuer ?? '', date: newItemDraft.award_date ?? '' }] })); setAddingSection(null); setNewItemDraft({}); }} className="rounded-lg px-3 py-1.5 font-bold" style={{ fontSize: 13, backgroundColor: '#FFC800', color: '#1A1A1A', border: 'none', cursor: 'pointer' }}>Add</button>
+                <button onClick={() => { setAddingSection(null); setNewItemDraft({}); }} className="rounded-lg px-3 py-1.5" style={{ fontSize: 13, backgroundColor: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-gray)', cursor: 'pointer' }}>Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setAddingSection('award')} className="flex items-center gap-2 mt-3 font-semibold" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFC800', fontSize: 13 }}>
+                <Plus size={16} color="#FFC800" />Add Award
+              </button>
+            )
+          )}
         </AccordionSection>
 
         {/* App Settings */}
@@ -836,8 +1350,8 @@ export default function ProfilePage() {
           <>
             <ResumePreview profile={editData} />
             <div className="flex gap-3 mt-4 pb-8 flex-wrap">
-              <button onClick={() => showToast('PDF download started')} className="rounded-xl font-semibold px-4 py-2.5" style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14, cursor: 'pointer' }}>
-                Download PDF
+              <button onClick={() => window.print()} className="rounded-xl font-semibold px-4 py-2.5" style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14, cursor: 'pointer' }}>
+                Export PDF
               </button>
               <button onClick={() => showToast('Profile link copied!')} className="rounded-xl font-semibold px-4 py-2.5" style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14, cursor: 'pointer' }}>
                 Share Link
@@ -901,7 +1415,7 @@ export default function ProfilePage() {
         {/* Mobile right panel cards */}
         <ProfileHealthCard />
         <div className="mx-4 mb-4"><CuppyTipCard /></div>
-        <div className="mx-4 mb-4"><QuickActionsCard onAction={showToast} /></div>
+        <div className="mx-4 mb-4"><QuickActionsCard onAction={showToast} fullName={editData.personal.fullName} /></div>
 
         {/* Tab switcher */}
         <div className="mx-4 mb-4">

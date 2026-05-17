@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,6 +18,7 @@ import TopBar from '@/components/TopBar';
 import BottomNav from '@/components/BottomNav';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/lib/utils';
+import { cariApi, type SavedResumeResponse } from '@/lib/cari-api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,26 @@ function matchColor(score: number) {
 
 // ─── Resume Card ──────────────────────────────────────────────────────────────
 
+function mapSavedResume(saved: SavedResumeResponse): TailoredResume {
+  const company = saved.resume.metadata.company ?? 'Saved Resume';
+
+  return {
+    id: saved.id,
+    jobTitle: saved.resume.metadata.jobTitle ?? saved.resume.metadata.title,
+    company,
+    companyColor: '#1CB0F6',
+    matchScore: saved.resume.metadata.matchScore ?? 80,
+    createdAt: new Date(saved.createdAt).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }),
+    status: saved.applicationStatus ? 'applied' : 'saved',
+    atsOptimized: saved.resume.metadata.atsOptimized ?? true,
+    jobId: saved.jobId ?? saved.id,
+  };
+}
+
 function ResumeCard({ resume, index }: { resume: TailoredResume; index: number }) {
   const router = useRouter();
   const mc = matchColor(resume.matchScore);
@@ -163,7 +184,7 @@ function ResumeCard({ resume, index }: { resume: TailoredResume; index: number }
       <div className="flex gap-2.5">
         <motion.button
           whileTap={{ scale: 0.97 }}
-          onClick={() => { haptic('light'); router.push(`/jobs/${resume.jobId}/tailored`); }}
+          onClick={() => { haptic('light'); router.push(`/jobs/${resume.jobId}/tailored?resumeId=${resume.id}`); }}
           className="flex-1 h-10 rounded-xl bg-[#FFC800] text-[13px] font-bold text-[#1A1A1A] flex items-center justify-center gap-1.5"
           style={{ boxShadow: '0 3px 0 #CC9F00' }}
         >
@@ -213,8 +234,27 @@ function EmptyState() {
 export default function ResumesPage() {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'applied' | 'saved' | 'draft'>('all');
+  const [resumes, setResumes] = useState<TailoredResume[]>([]);
+  const [error, setError] = useState('');
 
-  const filtered = MOCK_RESUMES.filter(r => {
+  useEffect(() => {
+    let active = true;
+    cariApi
+      .listResumes({ limit: 100 })
+      .then((data) => {
+        if (!active) return;
+        setResumes(data.resumes.map(mapSavedResume));
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : 'Could not load resumes');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const filtered = resumes.filter(r => {
     const matchesSearch =
       r.jobTitle.toLowerCase().includes(search.toLowerCase()) ||
       r.company.toLowerCase().includes(search.toLowerCase());
@@ -265,9 +305,15 @@ export default function ResumesPage() {
           <div className="lg:hidden mb-5">
             <p className="text-[22px] font-extrabold text-[#1A1A1A]">My Resumes</p>
             <p className="text-[13px] text-[#6B6B6B] mt-1">
-              {MOCK_RESUMES.length} tailored resume{MOCK_RESUMES.length !== 1 ? 's' : ''} created
+              {resumes.length} tailored resume{resumes.length !== 1 ? 's' : ''} created
             </p>
           </div>
+
+          {error && (
+            <div className="mb-4 rounded-xl border border-[#FF4B4B] bg-[#FFF0F0] px-4 py-3 text-[13px] font-bold text-[#FF4B4B]">
+              {error}
+            </div>
+          )}
 
           {/* Search + filters row */}
           <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-5">
@@ -296,7 +342,7 @@ export default function ResumesPage() {
                   {f.label}
                   {f.key !== 'all' && (
                     <span className="ml-1.5 text-[11px] opacity-60">
-                      {MOCK_RESUMES.filter(r => r.status === f.key).length}
+                      {resumes.filter(r => r.status === f.key).length}
                     </span>
                   )}
                 </button>
@@ -307,10 +353,10 @@ export default function ResumesPage() {
           {/* Summary stats */}
           <div className="hidden lg:grid lg:grid-cols-4 gap-4 mb-6">
             {[
-              { label: 'Total Resumes', value: MOCK_RESUMES.length,                                                                         color: '#FFC800' },
-              { label: 'Applied',       value: MOCK_RESUMES.filter(r => r.status === 'applied').length,                                     color: '#4CAF50' },
-              { label: 'ATS Optimized', value: MOCK_RESUMES.filter(r => r.atsOptimized).length,                                             color: '#7C5CBF' },
-              { label: 'Avg Match',     value: `${Math.round(MOCK_RESUMES.reduce((s, r) => s + r.matchScore, 0) / MOCK_RESUMES.length)}%`,  color: '#1CB0F6' },
+              { label: 'Total Resumes', value: resumes.length, color: '#FFC800' },
+              { label: 'Applied',       value: resumes.filter(r => r.status === 'applied').length, color: '#4CAF50' },
+              { label: 'ATS Optimized', value: resumes.filter(r => r.atsOptimized).length, color: '#7C5CBF' },
+              { label: 'Avg Match',     value: `${resumes.length ? Math.round(resumes.reduce((s, r) => s + r.matchScore, 0) / resumes.length) : 0}%`, color: '#1CB0F6' },
             ].map(stat => (
               <div key={stat.label} className="bg-white rounded-2xl border border-[#E8E0D0] p-5 text-center">
                 <p className="text-[28px] font-extrabold" style={{ color: stat.color }}>{stat.value}</p>

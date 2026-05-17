@@ -2,10 +2,12 @@ import { Router } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth.middleware';
 import {
   createJobSchema,
+  externalJobSearchQuerySchema,
   listJobsQuerySchema,
   updateJobSchema,
   uuidParamSchema,
 } from '../schemas/job.schema';
+import { searchExternalJobs } from '../services/external-job.service';
 import {
   createJobForCompanyOwner,
   deleteJobForCompanyOwner,
@@ -15,6 +17,16 @@ import {
 } from '../services/job.service';
 
 const jobRouter = Router();
+
+jobRouter.get('/external/search', async (req, res, next): Promise<void> => {
+  try {
+    const input = externalJobSearchQuerySchema.parse(req.query);
+    const data = await searchExternalJobs(input);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
 
 jobRouter.get('/', async (req, res, next): Promise<void> => {
   try {

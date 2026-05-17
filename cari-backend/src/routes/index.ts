@@ -9,6 +9,7 @@ import { healthRouter } from './health.routes';
 import { jobRouter } from './job.routes';
 import { profileRouter } from './profile.routes';
 import { resumeGenerationRouter } from './resume-generation.routes';
+import { roadmapRouter } from './roadmap.routes';
 
 const router = Router();
 
@@ -45,5 +46,6 @@ router.use('/resumes', resumeGenerationRouter);
 router.use('/github', githubRouter);
 router.use('/applications', applicationRouter);
 router.use('/company-portal', companyPortalRouter);
+router.use('/roadmap', roadmapRouter);
 
 export { router };

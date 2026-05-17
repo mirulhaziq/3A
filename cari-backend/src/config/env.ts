@@ -12,6 +12,15 @@ const envSchema = z.object({
   SUPABASE_ANON_KEY: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  OPENAI_BASE_URL: z.string().url().optional(),
+  GPT4_API_KEY: z.string().optional(),
+  GPT4_BASE_URL: z.string().url().optional(),
+  RAPIDAPI_KEY: z.string().optional(),
+  RAPIDAPI_HOST: z.string().min(1).default('jsearch.p.rapidapi.com'),
+  JSEARCH_BASE_URL: z
+    .string()
+    .url()
+    .default('https://jsearch.p.rapidapi.com'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
