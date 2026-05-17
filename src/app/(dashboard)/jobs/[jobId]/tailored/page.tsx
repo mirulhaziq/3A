@@ -1,26 +1,18 @@
 'use client';
 
 import { use, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Rocket,
   ChevronLeft,
-  Briefcase,
-  Home,
-  Map,
-  User,
-  Settings,
-  LogOut,
   Download,
-  FileText,
   Info,
-  Sparkles,
   MoreVertical,
   SendHorizonal,
-  ScrollText,
 } from 'lucide-react';
 import { haptic } from '@/lib/haptics';
+import Sidebar from '@/components/Sidebar';
 
 // ---------------------------------------------------------------------------
 // Mock data
@@ -82,69 +74,8 @@ const MOCK_TAILORED_RESUME = {
   },
 };
 
-// Suppress unused warnings
+// Suppress unused warning
 void MOCK_JOB_DETAIL;
-void FileText;
-void Sparkles;
-
-// ---------------------------------------------------------------------------
-// Sidebar
-// ---------------------------------------------------------------------------
-
-function Sidebar() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const navItems = [
-    { label: 'Home',    icon: Home,       href: '/dashboard' },
-    { label: 'Jobs',    icon: Briefcase,  href: '/jobs'      },
-    { label: 'Resumes', icon: ScrollText, href: '/resumes'   },
-    { label: 'Roadmap', icon: Map,        href: '/roadmap'   },
-    { label: 'Profile', icon: User,       href: '/profile'   },
-  ];
-  return (
-    <aside className="hidden lg:flex w-[220px] flex-shrink-0 bg-[#1A1A1A] flex-col fixed left-0 top-0 h-full z-40 py-8 px-5">
-      <div className="flex items-center gap-3 mb-10">
-        <div className="w-9 h-9 bg-[#FFC800] rounded-xl flex items-center justify-center">
-          <Briefcase size={18} color="#1A1A1A" />
-        </div>
-        <div>
-          <p className="text-white text-[18px] font-extrabold leading-none">Cari</p>
-          <p className="text-[#6B6B6B] text-[11px] mt-0.5">Career Co-pilot</p>
-        </div>
-      </div>
-      <nav className="flex flex-col gap-1 flex-1">
-        {navItems.map(({ label, icon: Icon, href }) => {
-          const active =
-            pathname === href ||
-            pathname.startsWith(href === '/dashboard' ? href : href + '/') ||
-            (href === '/jobs' && pathname.startsWith('/jobs'));
-          return (
-            <button
-              key={href}
-              onClick={() => router.push(href)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[15px] font-semibold transition-colors w-full text-left ${
-                active
-                  ? 'bg-[#FFC800] text-[#1A1A1A]'
-                  : 'text-[#9CA3AF] hover:text-white hover:bg-[#2D2D2D]'
-              }`}
-            >
-              <Icon size={20} />
-              {label}
-            </button>
-          );
-        })}
-      </nav>
-      <div className="border-t border-[#2D2D2D] pt-4 flex flex-col gap-1">
-        <button className="flex items-center gap-3 px-4 py-3 rounded-xl text-[#9CA3AF] hover:text-white hover:bg-[#2D2D2D] text-[15px] font-semibold transition-colors w-full">
-          <Settings size={20} /> Settings
-        </button>
-        <button className="flex items-center gap-3 px-4 py-3 rounded-xl text-[#9CA3AF] hover:text-white hover:bg-[#2D2D2D] text-[15px] font-semibold transition-colors w-full">
-          <LogOut size={20} /> Logout
-        </button>
-      </div>
-    </aside>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // DiamondChart
@@ -263,68 +194,41 @@ export default function TailoredResumePage({
         </div>
 
         {/* MOBILE: Match Score Card */}
-        <div className="lg:hidden mx-4 mt-3 mb-4 bg-white rounded-2xl border border-[#E8E0D0] p-4">
-          <div className="flex items-center gap-4">
-            {/* SVG ring score */}
-            <div className="w-20 h-20 flex-shrink-0">
-              <svg width="80" height="80" viewBox="0 0 80 80">
-                <circle
-                  cx="40"
-                  cy="40"
-                  r="30"
-                  fill="none"
-                  stroke="#E8E0D0"
-                  strokeWidth="8"
-                />
-                <motion.circle
-                  cx="40"
-                  cy="40"
-                  r="30"
-                  fill="none"
-                  stroke="#1CB0F6"
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                  strokeDasharray="188.5"
-                  initial={{ strokeDashoffset: 188.5 }}
-                  animate={{ strokeDashoffset: 18.85 }}
-                  transition={{ duration: 1.5, ease: 'easeOut' }}
-                  transform="rotate(-90 40 40)"
-                />
-                <text
-                  x="40"
-                  y="37"
-                  textAnchor="middle"
-                  fontSize="18"
-                  fontWeight="800"
-                  fill="#1A1A1A"
-                  fontFamily="Nunito"
-                >
-                  90
-                </text>
-                <text
-                  x="40"
-                  y="50"
-                  textAnchor="middle"
-                  fontSize="8"
-                  fill="#6B6B6B"
-                  fontFamily="Nunito"
-                >
-                  SCORE
-                </text>
-              </svg>
-            </div>
-            <div>
-              <p className="text-[18px] font-bold text-[#1A1A1A]">Excellent Match!</p>
-              <p className="text-[13px] text-[#6B6B6B] mt-1 leading-relaxed">
-                Your profile fits 90% of the key job requirements.
-              </p>
-            </div>
+        <div className="lg:hidden mx-4 mt-3 mb-4 bg-white rounded-2xl border border-[#E8E0D0] p-5">
+          <div className="flex flex-col items-center">
+            <svg width={120} height={120} viewBox="0 0 120 120">
+              <circle cx={60} cy={60} r={48} fill="none" stroke="#E8E0D0" strokeWidth={10} />
+              <motion.circle
+                cx={60} cy={60} r={48}
+                fill="none"
+                stroke="#FFC800"
+                strokeWidth={10}
+                strokeLinecap="round"
+                strokeDasharray={2 * Math.PI * 48}
+                initial={{ strokeDashoffset: 2 * Math.PI * 48 }}
+                animate={{ strokeDashoffset: 2 * Math.PI * 48 * (1 - 0.94) }}
+                transition={{ duration: 1.2, ease: 'easeOut', delay: 0.2 }}
+                transform="rotate(-90 60 60)"
+              />
+              <text
+                x={60} y={60}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                style={{ fontSize: 22, fontWeight: 800, fill: '#1A1A1A', fontFamily: 'Nunito, sans-serif' }}
+              >
+                94%
+              </text>
+            </svg>
+            <p className="text-[16px] font-bold text-[#1A1A1A] mt-2">Excellent Match!</p>
+            <p className="text-[13px] text-[#6B6B6B] mt-1 text-center leading-relaxed">
+              Your profile fits 94% of the key job requirements.
+            </p>
           </div>
         </div>
 
         {/* MOBILE: Cuppy message */}
         <div className="lg:hidden mx-4 mb-4 flex items-start gap-3">
-          <div className="w-[52px] h-[52px] rounded-xl border-2 border-[#FFC800] overflow-hidden bg-[#FFF8E1] flex-shrink-0">
+          <div className="w-13 h-13 rounded-xl border-2 border-[#FFC800] overflow-hidden bg-[#FFF8E1] shrink-0">
             <motion.div
               animate={{ y: [0, -6, 0] }}
               transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
@@ -396,7 +300,7 @@ export default function TailoredResumePage({
                   <ul className="flex flex-col gap-1.5 mt-1">
                     {exp.bullets.map((bullet, i) => (
                       <li key={i} className="flex gap-1.5 items-start">
-                        <div className="w-1 h-1 rounded-full bg-[#FFC800] flex-shrink-0 mt-[5px]" />
+                        <div className="w-1 h-1 rounded-full bg-[#FFC800] shrink-0 mt-1.25" />
                         <p className="text-[11px] text-[#4A4A4A] leading-relaxed">{bullet}</p>
                       </li>
                     ))}
@@ -418,7 +322,7 @@ export default function TailoredResumePage({
         </div>
 
         {/* DESKTOP: Two-column grid */}
-        <div className="hidden lg:grid lg:grid-cols-[1fr_320px] gap-6 p-6 max-w-[1200px]">
+        <div className="hidden lg:grid lg:grid-cols-[1fr_320px] gap-6 p-6 max-w-300">
 
           {/* LEFT: Resume Preview */}
           <motion.div
@@ -464,7 +368,7 @@ export default function TailoredResumePage({
                   <ul className="flex flex-col gap-2">
                     {exp.bullets.map((bullet, i) => (
                       <li key={i} className="flex gap-2.5 items-start">
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#FFC800] flex-shrink-0 mt-1.5" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#FFC800] shrink-0 mt-1.5" />
                         <p className="text-[12px] text-[#4A4A4A] leading-relaxed">{bullet}</p>
                       </li>
                     ))}
@@ -499,7 +403,7 @@ export default function TailoredResumePage({
           </motion.div>
 
           {/* RIGHT: sidebar cards */}
-          <div className="flex flex-col gap-4 sticky top-[80px] self-start">
+          <div className="flex flex-col gap-4 sticky top-20 self-start">
 
             {/* Match Score Card */}
             <motion.div
@@ -513,21 +417,33 @@ export default function TailoredResumePage({
                 <Info size={18} className="text-[#ABABAB]" />
               </div>
 
-              <div className="mx-auto mb-4 w-[160px] h-[160px] bg-[#2D2D2D] rounded-2xl flex items-center justify-center">
-                <motion.div
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.2 }}
-                >
-                  <div className="w-[120px] h-[120px] bg-[#FFC800] rounded-full flex flex-col items-center justify-center shadow-[inset_0_0_0_4px_rgba(255,255,255,0.2),0_4px_16px_rgba(255,200,0,0.4)]">
-                    <span className="text-[32px] font-extrabold text-[#1A1A1A] leading-none">
-                      94%
-                    </span>
-                    <span className="text-[11px] font-semibold text-[#1A1A1A] mt-0.5">MATCH</span>
-                  </div>
-                </motion.div>
+              <div className="flex justify-center mb-3">
+                <svg width={140} height={140} viewBox="0 0 140 140">
+                  <circle cx={70} cy={70} r={54} fill="none" stroke="#E8E0D0" strokeWidth={10} />
+                  <motion.circle
+                    cx={70} cy={70} r={54}
+                    fill="none"
+                    stroke="#FFC800"
+                    strokeWidth={10}
+                    strokeLinecap="round"
+                    strokeDasharray={2 * Math.PI * 54}
+                    initial={{ strokeDashoffset: 2 * Math.PI * 54 }}
+                    animate={{ strokeDashoffset: 2 * Math.PI * 54 * (1 - 0.94) }}
+                    transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }}
+                    transform="rotate(-90 70 70)"
+                  />
+                  <text
+                    x={70} y={70}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    style={{ fontSize: 26, fontWeight: 800, fill: '#1A1A1A', fontFamily: 'Nunito, sans-serif' }}
+                  >
+                    94%
+                  </text>
+                </svg>
               </div>
 
+              <p className="text-[14px] font-bold text-[#1A1A1A] text-center mb-1">Excellent Match!</p>
               <p className="text-[13px] text-[#6B6B6B] text-center leading-relaxed">
                 You&apos;re a top candidate! Your profile strongly aligns with TechFlow&apos;s
                 technical requirements.
@@ -546,7 +462,7 @@ export default function TailoredResumePage({
                   animate={{ y: [0, -6, 0] }}
                   transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
                 >
-                  <div className="w-11 h-11 rounded-full border-2 border-[#FFC800] overflow-hidden bg-[#FFF8E1] flex-shrink-0">
+                  <div className="w-11 h-11 rounded-full border-2 border-[#FFC800] overflow-hidden bg-[#FFF8E1] shrink-0">
                     <img
                       src="/cuppy-placeholder.png"
                       alt="Cuppy"
@@ -574,7 +490,7 @@ export default function TailoredResumePage({
                 setShowToast(true);
                 setTimeout(() => setShowToast(false), 2500);
               }}
-              className="w-full h-[52px] bg-[#2D2D2D] rounded-2xl shadow-[0_4px_0_#1A1A1A] flex items-center justify-center gap-2"
+              className="w-full h-13 bg-[#2D2D2D] rounded-2xl shadow-[0_4px_0_#1A1A1A] flex items-center justify-center gap-2"
             >
               <Rocket size={18} className="text-white" />
               <span className="text-[14px] font-bold text-white uppercase tracking-wider">
@@ -591,7 +507,7 @@ export default function TailoredResumePage({
                 setShowToast(true);
                 setTimeout(() => setShowToast(false), 2000);
               }}
-              className="w-full h-[52px] bg-white rounded-2xl border-2 border-[#E8E0D0] shadow-[0_4px_0_#D1D1D1] flex items-center justify-center gap-2"
+              className="w-full h-13 bg-white rounded-2xl border-2 border-[#E8E0D0] shadow-[0_4px_0_#D1D1D1] flex items-center justify-center gap-2"
             >
               <Download size={18} className="text-[#1A1A1A]" />
               <span className="text-[14px] font-bold text-[#1A1A1A] uppercase tracking-wider">
@@ -611,7 +527,7 @@ export default function TailoredResumePage({
               setShowToast(true);
               setTimeout(() => setShowToast(false), 2500);
             }}
-            className="w-full h-[54px] bg-[#FFC800] rounded-2xl shadow-[0_4px_0_#CC9F00] mb-2.5 flex items-center justify-center gap-2.5"
+            className="w-full h-13.5 bg-[#FFC800] rounded-2xl shadow-[0_4px_0_#CC9F00] mb-2.5 flex items-center justify-center gap-2.5"
           >
             <SendHorizonal size={18} className="text-[#1A1A1A]" />
             <span className="text-[16px] font-bold text-[#1A1A1A]">Apply Now</span>
@@ -624,7 +540,7 @@ export default function TailoredResumePage({
               setShowToast(true);
               setTimeout(() => setShowToast(false), 2000);
             }}
-            className="w-full h-[50px] bg-white border-2 border-[#E8E0D0] rounded-2xl shadow-[0_4px_0_#D1D1D1] flex items-center justify-center gap-2"
+            className="w-full h-12.5 bg-white border-2 border-[#E8E0D0] rounded-2xl shadow-[0_4px_0_#D1D1D1] flex items-center justify-center gap-2"
           >
             <Download size={18} className="text-[#1A1A1A]" />
             <span className="text-[15px] font-bold text-[#1A1A1A]">Download PDF</span>
@@ -638,7 +554,7 @@ export default function TailoredResumePage({
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: -20, opacity: 0 }}
-              className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[100] bg-[#4CAF50] text-white px-6 py-3 rounded-full text-[14px] font-bold shadow-lg whitespace-nowrap"
+              className="fixed bottom-28 left-1/2 -translate-x-1/2 z-100 bg-[#4CAF50] text-white px-6 py-3 rounded-full text-[14px] font-bold shadow-lg whitespace-nowrap"
             >
               🎉 {toastMessage}
             </motion.div>
