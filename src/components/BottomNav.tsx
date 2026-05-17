@@ -13,7 +13,7 @@ const tabs = [
   { href: '/profile',   label: 'Profile', icon: User       },
 ];
 
-const HIDDEN_ROUTES = ['/onboarding', '/handoff', '/login'];
+const HIDDEN_ROUTES = ['/onboarding', '/handoff', '/login', '/company'];
 
 export default function BottomNav() {
   const pathname = usePathname();
