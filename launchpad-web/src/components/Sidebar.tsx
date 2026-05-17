@@ -103,7 +103,7 @@ export default function Sidebar() {
 
         {/* Settings + Logout */}
         {[
-          { href: '/settings', label: 'Settings', icon: Settings },
+          { href: '/profile', label: 'Settings', icon: Settings },
           { href: '/login', label: 'Logout', icon: LogOut },
         ].map(({ href, label, icon: Icon }) => (
           <Link
