@@ -1,0 +1,25 @@
+meta {
+  name: Replace My Profile Direct
+  type: http
+  seq: 3
+}
+
+put {
+  url: http://localhost:3001/api/v1/profile/me
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "fullName": "Test Job Seeker",
+    "targetRole": "Software Engineer",
+    "profileData": {
+      "summary": "Reset profile payload for testing."
+    }
+  }
+}

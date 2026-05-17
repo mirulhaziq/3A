@@ -1,0 +1,22 @@
+meta {
+  name: Analyse CV Against JD Direct
+  type: http
+  seq: 1
+}
+
+post {
+  url: http://localhost:3001/api/v1/analysis
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "cvText": "Amirul Haziq is a final-year Software Engineering student with internship experience building backend APIs, documentation tools, and dashboards. He has worked with Go, Python, FastAPI, React, PostgreSQL, Docker, Supabase, GitHub, REST APIs, and AWS EC2. Projects include a finance management app using React, PostgreSQL, Python, and LLM data extraction, plus a Flutter and Firebase rental car application. He has experience documenting OpenAPI specifications, contributing to digital identity verification flows, and collaborating in Agile sprints.",
+    "jobDescription": "We are hiring a Backend Engineer to build scalable services for a career platform. The role requires TypeScript, Express.js, PostgreSQL, REST API design, Docker, Git, and experience integrating third-party APIs. Nice to have skills include Supabase, OpenAI API usage, Railway deployment, queue workers, Redis, and cloud deployment experience. The candidate should write clean API documentation, collaborate in agile product teams, and improve service reliability."
+  }
+}

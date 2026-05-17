@@ -1,0 +1,20 @@
+meta {
+  name: Register - Job Seeker Direct
+  type: http
+  seq: 6
+}
+
+post {
+  url: http://localhost:3001/api/v1/auth/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "jobseeker@example.com",
+    "password": "Password123!",
+    "role": "JOB_SEEKER",
+    "fullName": "Test Job Seeker"
+  }
+}

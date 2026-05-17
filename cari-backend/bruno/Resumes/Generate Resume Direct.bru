@@ -1,0 +1,75 @@
+meta {
+  name: Generate Resume Direct
+  type: http
+  seq: 1
+}
+
+post {
+  url: http://localhost:3001/api/v1/resumes/generate
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "title": "Backend Engineer Tailored Resume",
+    "profileData": {
+      "personal": {
+        "fullName": "Amirul Haziq Bin Shazlee",
+        "location": "Kuala Lumpur",
+        "phone": "+60175815030",
+        "email": "ahaziqshazlee@gmail.com",
+        "linkedin": "linkedin.com/in/amirulhaziqshazlee",
+        "github": "github.com/mirulhaziq"
+      },
+      "summary": "Final-year Software Engineering student with backend internship experience, OpenAPI documentation, FastAPI, Go, React, PostgreSQL, Docker, Supabase, and AWS exposure.",
+      "skills": {
+        "languages": ["Java", "Python", "Go", "SQL", "TypeScript"],
+        "frameworks": ["FastAPI", "Express.js", "Next.js", "Flutter"],
+        "toolsAndPlatforms": ["PostgreSQL", "Supabase", "Docker", "GitHub", "AWS EC2"],
+        "softSkills": ["Leadership", "Strategic Communication", "Agile Mindset"]
+      },
+      "experience": [
+        {
+          "company": "RHB Bank Berhad",
+          "role": "Software Engineering Intern",
+          "type": "Internship",
+          "startDate": "March 2026",
+          "endDate": "Present",
+          "current": true,
+          "bullets": [
+            "Designed RESTful API specifications using OAS 3.0 for a digital identity proxy service.",
+            "Contributed to e-verification feature development and polling integration.",
+            "Collaborated in Agile sprints with cross-functional teams."
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "Finance Management App for B40 Entrepreneurs",
+          "description": "Voice-based web app for tracking daily sales.",
+          "techStack": ["React", "PostgreSQL", "Python", "LLM"],
+          "bullets": [
+            "Integrated LLM functions to extract item, quantity, and profit from raw speech inputs.",
+            "Designed PostgreSQL structures for monthly transaction aggregation."
+          ],
+          "repoUrl": "https://github.com/mirulhaziq"
+        }
+      ],
+      "education": [
+        {
+          "institution": "Universiti Kebangsaan Malaysia",
+          "degree": "Bachelor of Software Engineering",
+          "field": "Information System",
+          "startDate": "Oct 2022",
+          "endDate": "Present"
+        }
+      ]
+    },
+    "jobDescription": "We are hiring a Backend Engineer to build Express.js APIs with TypeScript, PostgreSQL, Supabase, Docker, Git, OpenAI integration, and Railway deployment. The candidate should write API documentation, collaborate in Agile teams, and ship reliable backend services."
+  }
+}

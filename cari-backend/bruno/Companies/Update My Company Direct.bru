@@ -1,0 +1,22 @@
+meta {
+  name: Update My Company Direct
+  type: http
+  seq: 3
+}
+
+patch {
+  url: http://localhost:3001/api/v1/companies/me
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "description": "Updated Cari company description from Bruno.",
+    "credibilityScore": 750
+  }
+}

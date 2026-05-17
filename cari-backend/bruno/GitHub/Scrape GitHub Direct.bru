@@ -1,0 +1,23 @@
+meta {
+  name: Scrape GitHub Direct
+  type: http
+  seq: 1
+}
+
+post {
+  url: http://localhost:3001/api/v1/github/scrape
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "username": "mirulhaziq",
+    "includeForks": false,
+    "maxRepos": 30
+  }
+}

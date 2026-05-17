@@ -1,0 +1,26 @@
+meta {
+  name: Upsert My Company Direct
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://localhost:3001/api/v1/companies/me
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "name": "Cari Test Company",
+    "industry": "Technology",
+    "size": "11-50",
+    "description": "A test company account for Cari backend verification.",
+    "website": "https://example.com",
+    "credibilityScore": 700
+  }
+}

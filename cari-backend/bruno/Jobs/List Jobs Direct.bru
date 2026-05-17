@@ -1,0 +1,15 @@
+meta {
+  name: List Jobs Direct
+  type: http
+  seq: 2
+}
+
+get {
+  url: http://localhost:3001/api/v1/jobs?limit=20&offset=0
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

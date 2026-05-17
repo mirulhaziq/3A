@@ -1,0 +1,21 @@
+meta {
+  name: Register - Company
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/auth/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "company@example.com",
+    "password": "Password123!",
+    "role": "COMPANY",
+    "fullName": "Test Recruiter",
+    "companyName": "Cari Test Company"
+  }
+}
