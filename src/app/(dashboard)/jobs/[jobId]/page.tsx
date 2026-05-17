@@ -22,6 +22,7 @@ import {
   Trophy,
   BarChart2,
   Info,
+  ScrollText,
 } from 'lucide-react';
 import { haptic } from '@/lib/haptics';
 
@@ -62,10 +63,11 @@ function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const navItems = [
-    { label: 'Home', icon: Home, href: '/dashboard' },
-    { label: 'Jobs', icon: Briefcase, href: '/jobs' },
-    { label: 'Roadmap', icon: Map, href: '/roadmap' },
-    { label: 'Profile', icon: User, href: '/profile' },
+    { label: 'Home',    icon: Home,       href: '/dashboard' },
+    { label: 'Jobs',    icon: Briefcase,  href: '/jobs'      },
+    { label: 'Resumes', icon: ScrollText, href: '/resumes'   },
+    { label: 'Roadmap', icon: Map,        href: '/roadmap'   },
+    { label: 'Profile', icon: User,       href: '/profile'   },
   ];
   return (
     <aside className="hidden lg:flex w-[220px] flex-shrink-0 bg-[#1A1A1A] flex-col fixed left-0 top-0 h-full z-40 py-8 px-5">
