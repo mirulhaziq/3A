@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://launchpad.app/sitemap.xml
