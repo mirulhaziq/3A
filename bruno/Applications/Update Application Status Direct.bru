@@ -1,0 +1,21 @@
+meta {
+  name: Update Application Status Direct
+  type: http
+  seq: 4
+}
+
+patch {
+  url: http://localhost:3001/api/v1/applications/{{applicationId}}/status
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "status": "INTERVIEW"
+  }
+}

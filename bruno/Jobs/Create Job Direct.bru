@@ -1,0 +1,31 @@
+meta {
+  name: Create Job Direct
+  type: http
+  seq: 3
+}
+
+post {
+  url: http://localhost:3001/api/v1/jobs
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "title": "Backend Engineer",
+    "location": "Kuala Lumpur",
+    "workMode": "Hybrid",
+    "type": "Full-time",
+    "salaryMin": 5000,
+    "salaryMax": 8000,
+    "currency": "RM",
+    "description": "Build Express.js and Supabase services for Cari.",
+    "requiredSkills": ["TypeScript", "Express.js", "PostgreSQL", "Supabase"],
+    "niceToHaveSkills": ["OpenAI", "Docker"],
+    "isActive": true
+  }
+}

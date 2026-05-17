@@ -1,0 +1,26 @@
+meta {
+  name: Apply To Job Direct
+  type: http
+  seq: 3
+}
+
+post {
+  url: http://localhost:3001/api/v1/applications
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: eyJhbGciOiJFUzI1NiIsImtpZCI6IjcxMjg0ZDBlLWZjZTUtNDRiMS04ZjI2LTllYThhZGE3YmJmMCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2l5dXNrbnBwZ3ZlbXFidXRnaXBnLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiIxNGNlN2UyZi1hMzAwLTRlYzMtOGFhNC0xYjI4MjBjYTU1YmYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzc4OTk1Mzk0LCJpYXQiOjE3Nzg5OTE3OTQsImVtYWlsIjoiam9ic2Vla2VyQGV4YW1wbGUuY29tIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZnVsbE5hbWUiOiJUZXN0IEpvYiBTZWVrZXIiLCJyb2xlIjoiSk9CX1NFRUtFUiJ9LCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImFhbCI6ImFhbDEiLCJhbXIiOlt7Im1ldGhvZCI6InBhc3N3b3JkIiwidGltZXN0YW1wIjoxNzc4OTkxNzk0fV0sInNlc3Npb25faWQiOiJhMDVjNDYxMy02MTIxLTQ0YjMtOGM5Ny0yYTBmYzRjYTIyMjEiLCJpc19hbm9ueW1vdXMiOmZhbHNlfQ.nMejESMI6Fh4YFD86Jya_xnTmWxOYVrj9npK9-NmEdPK6aKbk__eXvf4vcTkiRx9t8sJiPT9quga5lRKE8fyCA
+}
+
+body:json {
+  {
+    "jobId": "{{jobId}}",
+    "coverNote": "I am interested in this role and would like to apply through Cari."
+  }
+}
+
+vars:pre-request {
+  jobId: 7b254733-3276-4b9d-a8ed-06b9d0ef89dd
+}

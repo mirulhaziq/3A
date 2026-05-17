@@ -1,0 +1,15 @@
+meta {
+  name: Delete My Profile Direct
+  type: http
+  seq: 4
+}
+
+delete {
+  url: http://localhost:3001/api/v1/profile/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

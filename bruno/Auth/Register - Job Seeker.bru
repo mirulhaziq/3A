@@ -1,0 +1,20 @@
+meta {
+  name: Register - Job Seeker
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/auth/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "jobseeker@example.com",
+    "password": "Password123!",
+    "role": "JOB_SEEKER",
+    "fullName": "Test Job Seeker"
+  }
+}

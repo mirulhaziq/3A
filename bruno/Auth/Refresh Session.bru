@@ -1,0 +1,17 @@
+meta {
+  name: Refresh Session
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/auth/refresh
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "refreshToken": "paste-refresh-token-here"
+  }
+}

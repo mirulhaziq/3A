@@ -1,0 +1,15 @@
+meta {
+  name: Get My Company Direct
+  type: http
+  seq: 1
+}
+
+get {
+  url: http://localhost:3001/api/v1/companies/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

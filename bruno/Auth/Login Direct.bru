@@ -1,0 +1,18 @@
+meta {
+  name: Login Direct
+  type: http
+  seq: 8
+}
+
+post {
+  url: http://localhost:3001/api/v1/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "jobseeker@example.com",
+    "password": "Password123!"
+  }
+}

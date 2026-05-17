@@ -1,0 +1,22 @@
+meta {
+  name: Update Job Direct
+  type: http
+  seq: 5
+}
+
+patch {
+  url: http://localhost:3001/api/v1/jobs/{{jobId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "salaryMax": 9000,
+    "niceToHaveSkills": ["OpenAI", "Docker", "Railway"]
+  }
+}
