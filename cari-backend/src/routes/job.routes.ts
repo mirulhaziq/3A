@@ -3,6 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth.middleware';
 import {
   createJobSchema,
   externalJobSearchQuerySchema,
+  jobIdParamSchema,
   listJobsQuerySchema,
   updateJobSchema,
   uuidParamSchema,
@@ -40,7 +41,7 @@ jobRouter.get('/', async (req, res, next): Promise<void> => {
 
 jobRouter.get('/:id', async (req, res, next): Promise<void> => {
   try {
-    const { id } = uuidParamSchema.parse(req.params);
+    const { id } = jobIdParamSchema.parse(req.params);
     const job = await getJobById(id);
     res.json({ success: true, data: { job } });
   } catch (error) {

@@ -26,7 +26,9 @@ app.use(
       if (
         !origin ||
         allowedOrigins.includes(origin) ||
-        origin.startsWith('chrome-extension://')
+        origin.startsWith('chrome-extension://') ||
+        origin.endsWith('.vercel.app') ||
+        origin.endsWith('.railway.app')
       ) {
         callback(null, true);
       } else {

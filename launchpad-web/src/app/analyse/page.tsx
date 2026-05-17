@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import confetti from 'canvas-confetti';
 import { haptic } from '@/lib/haptics';
 import {
   ChevronLeft,
@@ -178,14 +177,14 @@ export default function AnalysePage() {
           setScoreCount(nextAnalysis.matchScore);
           if (nextAnalysis.matchScore >= 75) {
             setTimeout(() => {
-              confetti({
+              void import('canvas-confetti').then(m => m.default({
                 particleCount: 100,
                 spread: 80,
                 colors: ['#4CAF50', '#FFC800', '#1CB0F6', '#FFFFFF'],
                 origin: { x: 0.5, y: 0.55 },
                 gravity: 0.8,
                 scalar: 0.9,
-              });
+              })).catch(() => {});
               haptic('success');
             }, 200);
           }

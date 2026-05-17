@@ -187,20 +187,52 @@
 }
 
 @media print {
-  body * { visibility: hidden; }
-  #resume-print-area, #resume-print-area * { visibility: visible; }
+  /* Hide everything except the resume area */
+  body > * { display: none !important; }
+  #resume-print-area { display: block !important; }
+
+  @page {
+    size: A4;
+    margin: 18mm 20mm;
+  }
+
   #resume-print-area {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    padding: 24px 40px !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
     border: none !important;
     border-radius: 0 !important;
-    max-width: none !important;
-    margin: 0 !important;
+    box-shadow: none !important;
     font-family: Georgia, "Times New Roman", serif !important;
-    background: #fff !important;
+    font-size: 11pt !important;
+    line-height: 1.45 !important;
     color: #000 !important;
+    background: white !important;
   }
+
+  #resume-print-area * {
+    color: #000 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Section headings: uppercase with bottom rule */
+  #resume-print-area h2,
+  #resume-print-area .resume-section-title {
+    font-size: 9pt !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.12em !important;
+    border-bottom: 0.5pt solid #000 !important;
+    padding-bottom: 2pt !important;
+    margin-bottom: 6pt !important;
+    font-weight: 800 !important;
+  }
+
+  /* Avoid splitting bullets across pages */
+  #resume-print-area li { page-break-inside: avoid; }
+  #resume-print-area .page-break { page-break-before: always; }
 }

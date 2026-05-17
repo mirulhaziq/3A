@@ -624,12 +624,32 @@ export default function JobsPage() {
   // Tab state
   const [activeTab, setActiveTab] = useState<'browse' | 'analyse'>('browse');
 
-  // Browse state
-  const [jobs, setJobs] = useState<Job[]>(ALL_JOBS);
+  // Browse state — restore from sessionStorage so JSearch results survive navigation
+  const [jobs, setJobs] = useState<Job[]>(() => {
+    if (typeof window === 'undefined') return ALL_JOBS;
+    try {
+      const saved = sessionStorage.getItem('cari_browse_jobs');
+      if (saved) {
+        const parsed = JSON.parse(saved) as Job[];
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch { /* ignore */ }
+    return ALL_JOBS;
+  });
   const [jobsError, setJobsError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
-  const [selectedJobId, setSelectedJobId] = useState<string>(ALL_JOBS[0].id);
+  const [selectedJobId, setSelectedJobId] = useState<string>(() => {
+    if (typeof window === 'undefined') return ALL_JOBS[0].id;
+    try {
+      const saved = sessionStorage.getItem('cari_browse_jobs');
+      if (saved) {
+        const parsed = JSON.parse(saved) as Job[];
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0].id;
+      }
+    } catch { /* ignore */ }
+    return ALL_JOBS[0].id;
+  });
   const [applyMessage, setApplyMessage] = useState('');
   const [externalLoading, setExternalLoading] = useState(false);
 
@@ -669,6 +689,7 @@ export default function JobsPage() {
         if (mappedJobs.length > 0) {
           setJobs(mappedJobs);
           setSelectedJobId(mappedJobs[0].id);
+          try { sessionStorage.setItem('cari_browse_jobs', JSON.stringify(mappedJobs)); } catch { /* ignore */ }
         }
       } catch (error) {
         if (!active) return;
@@ -684,6 +705,7 @@ export default function JobsPage() {
           if (mappedJobs.length > 0) {
             setJobs(mappedJobs);
             setSelectedJobId(mappedJobs[0].id);
+            try { sessionStorage.setItem('cari_browse_jobs', JSON.stringify(mappedJobs)); } catch { /* ignore */ }
           }
         } catch (externalError) {
           setJobsError(
@@ -751,6 +773,7 @@ export default function JobsPage() {
       if (mappedJobs.length > 0) {
         setJobs(mappedJobs);
         setSelectedJobId(mappedJobs[0].id);
+        try { sessionStorage.setItem('cari_browse_jobs', JSON.stringify(mappedJobs)); } catch { /* ignore */ }
       } else {
         setJobsError('No external jobs found for that search.');
       }
@@ -787,14 +810,8 @@ export default function JobsPage() {
   };
 
   const handleTailorResume = (job: Job) => {
-    if (job.source === 'jsearch') {
-      setActiveTab('analyse');
-      setJdText(job.description ?? '');
-      setAnalysisError('External jobs can be analysed first. Save/apply happens on the original job site.');
-      return;
-    }
-
-    router.push(`/jobs/${job.id}/tailored`);
+    sessionStorage.setItem('cari_scanned_job', JSON.stringify(job));
+    router.push(`/jobs/${job.id}`);
   };
 
   const handleAnalyse = async () => {
@@ -1019,9 +1036,9 @@ export default function JobsPage() {
                         <SkillRadarChart data={selectedCompat.radarData} />
                         {/* Cari's Verdict */}
                         <div className="mt-4 flex gap-2.5 items-start">
-                          <img src="/mascot-face.png" alt="Cari" style={{ width: 40, height: 40, borderRadius: 10, border: '2px solid #FFC800', objectFit: 'cover', flexShrink: 0 }} />
+                          <img src="/mascot-face.png" alt="Cuppy" style={{ width: 40, height: 40, borderRadius: 10, border: '2px solid #FFC800', objectFit: 'cover', flexShrink: 0 }} />
                           <div className="flex-1">
-                            <p className="text-[11px] font-bold text-[#FFC800] uppercase tracking-widest mb-1">Cari&apos;s Verdict</p>
+                            <p className="text-[11px] font-bold text-[#FFC800] uppercase tracking-widest mb-1">Cuppy&apos;s Verdict</p>
                             <div className="bg-[#FFF8E1] border border-[#FFC800] rounded-xl p-3">
                               <p className="text-[13px] italic text-[#1A1A1A]">"{selectedCompat.insights}"</p>
                             </div>
@@ -1084,7 +1101,7 @@ export default function JobsPage() {
                           onClick={() => handleTailorResume(selectedJob)}
                           className="flex-1 h-12 rounded-xl bg-[#FFC800] text-[15px] font-bold text-[#1A1A1A] shadow-[0_4px_0_#CC9F00]"
                         >
-                          Tailor Resume →
+                          Scan Job →
                         </motion.button>
                         <motion.button
                           whileTap={{ scale: 0.97, y: 2 }}
@@ -1468,7 +1485,7 @@ export default function JobsPage() {
                         onClick={() => handleTailorResume(selectedJob)}
                         className="flex-1 h-12 rounded-xl bg-[#FFC800] text-[15px] font-bold text-[#1A1A1A] shadow-[0_4px_0_#CC9F00]"
                       >
-                        Tailor My Resume →
+                        Scan Job →
                       </motion.button>
                       <motion.button
                         whileTap={{ scale: 0.97, y: 2 }}
@@ -1669,7 +1686,7 @@ export default function JobsPage() {
                   onClick={() => handleTailorResume(sheetJob)}
                   className="w-full h-13 rounded-xl bg-[#FFC800] text-[15px] font-bold text-[#1A1A1A] shadow-[0_4px_0_#CC9F00] py-3"
                 >
-                  Tailor Resume →
+                  Scan Job →
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.97, y: 2 }}

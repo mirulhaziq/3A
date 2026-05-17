@@ -63,19 +63,16 @@ const MOCK_USER: DashboardUser = {
   skillMatch: 64,
 };
 
-const MOCK_APPLICATIONS: DashboardApplication[] = [
-  { id: '1', company: 'Grab', role: 'Junior Frontend Developer', status: 'VIEWED', date: 'May 15' },
-  { id: '2', company: 'Axiata', role: 'React Developer', status: 'APPLIED', date: 'May 14' },
-  { id: '3', company: 'Shopee', role: 'Web Developer', status: 'INTERVIEW', date: 'May 12' },
-];
 
-const MOCK_MILESTONES = [
-  { label: 'First Application', done: true },
-  { label: '5-Day Streak', done: true },
-  { label: 'Profile 80% Complete', done: true },
-  { label: 'First Interview', done: false },
-  { label: 'Land First Offer', done: false },
-];
+function computeMilestones(apps: DashboardApplication[], user: DashboardUser) {
+  return [
+    { label: 'First Application', done: apps.length > 0 },
+    { label: '5-Day Streak', done: user.streak >= 5 },
+    { label: 'Profile 80% Complete', done: user.atsScore >= 60 },
+    { label: 'First Interview', done: apps.some((a) => a.status === 'INTERVIEW') },
+    { label: 'Land First Offer', done: apps.some((a) => a.status === 'OFFER') },
+  ];
+}
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   APPLIED:   { label: 'Applied',    color: '#1CB0F6', bg: '#E8F7FF' },
@@ -110,12 +107,6 @@ interface PersistedQuests {
   items: Quest[];
 }
 
-const SKILL_PHASES = [
-  { name: 'Foundation', done: 12, total: 12 },
-  { name: 'Core Dev', done: 4, total: 8 },
-  { name: 'Advanced', done: 0, total: 5 },
-  { name: 'Job Ready', done: 0, total: 4 },
-];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -178,8 +169,15 @@ export default function DashboardPage() {
   const [quests, setQuests] = useState<Quest[]>(getDailyQuests);
   const [toastXP, setToastXP] = useState(0);
   const [showToast, setShowToast] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
   const [dashboardUser, setDashboardUser] = useState<DashboardUser>(MOCK_USER);
-  const [applications, setApplications] = useState<DashboardApplication[]>(MOCK_APPLICATIONS);
+  const [applications, setApplications] = useState<DashboardApplication[]>([]);
+  const [skillPhases, setSkillPhases] = useState([
+    { name: 'Foundation', done: 0, total: 4 },
+    { name: 'Core Dev', done: 0, total: 4 },
+    { name: 'Advanced', done: 0, total: 4 },
+    { name: 'Job Ready', done: 0, total: 4 },
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -231,6 +229,18 @@ export default function DashboardPage() {
           xpPercent: Math.min(100, Math.round((profile.xp / current.xpMax) * 100)),
         }));
 
+        // Restore roadmap skill phase progress
+        const roadmapProgress = pd.roadmapProgress as Record<string, string[]> | undefined;
+        const roadmapRole = (pd.roadmapRole as string | undefined) ?? 'frontend';
+        const completedIds = roadmapProgress?.[roadmapRole] ?? [];
+        const phaseNames = ['Foundation', 'Core Dev', 'Advanced', 'Job Ready'];
+        const idRanges = [[0, 4], [4, 8], [8, 12], [12, 16]];
+        setSkillPhases(phaseNames.map((name, i) => {
+          const [start, end] = idRanges[i]!;
+          const done = completedIds.filter((_: string, idx: number) => idx >= start && idx < end).length;
+          return { name, done: Math.min(done, 4), total: 4 };
+        }));
+
         // Load persisted quests — if same day, restore; otherwise generate fresh
         const raw = (profile.profileData as Record<string, unknown>)?.quests;
         if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
@@ -266,6 +276,8 @@ export default function DashboardPage() {
           }))
         );
       }
+
+      if (active) setPageLoading(false);
     });
 
     return () => {
@@ -353,6 +365,23 @@ export default function DashboardPage() {
         {/* Content area */}
         <div style={{ flex: 1, padding: '32px 24px 120px', maxWidth: 760, margin: '0 auto', width: '100%' }}>
 
+          {/* Loading state */}
+          {pageLoading && (
+            <div className="flex flex-col items-center justify-center py-24 gap-4">
+              <img src="/mascot-face.png" alt="Cuppy" style={{ width: 56, height: 56, borderRadius: 12, border: '2px solid #FFC800' }} />
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#6B6B6B' }}>Loading your dashboard...</div>
+              <div style={{ width: 128, height: 8, background: '#E8E0D0', borderRadius: 9999, overflow: 'hidden' }}>
+                <motion.div
+                  style={{ height: '100%', background: '#FFC800', borderRadius: 9999, width: '40%' }}
+                  animate={{ x: ['-100%', '250%'] }}
+                  transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+                />
+              </div>
+            </div>
+          )}
+
+          {!pageLoading && (
+          <>
           {/* Mobile greeting */}
           <div className="lg:hidden" style={{ marginBottom: 24 }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#1A1A1A' }}>
@@ -511,7 +540,7 @@ export default function DashboardPage() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {SKILL_PHASES.map((phase, i) => (
+              {skillPhases.map((phase, i) => (
                 <motion.div
                   key={phase.name}
                   initial={{ opacity: 0, x: -8 }}
@@ -609,7 +638,7 @@ export default function DashboardPage() {
           >
             <div style={{ fontSize: 18, fontWeight: 800, color: '#1A1A1A', marginBottom: 14 }}>Milestones</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              {MOCK_MILESTONES.map((m) => (
+              {computeMilestones(applications, dashboardUser).map((m) => (
                 <div
                   key={m.label}
                   style={{
@@ -650,11 +679,11 @@ export default function DashboardPage() {
           >
             <img
               src="/mascot-face.png"
-              alt="Cari"
+              alt="Cuppy"
               style={{ width: 44, height: 44, borderRadius: 10, border: '2px solid #FFC800', objectFit: 'cover', flexShrink: 0 }}
             />
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: '#1A1A1A', marginBottom: 4 }}>Cari's Verdict</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#1A1A1A', marginBottom: 4 }}>Cuppy&apos;s Verdict</div>
               <div style={{ fontSize: 13, color: '#4A4A4A', lineHeight: 1.5 }}>
                 Your ATS score is <strong>{dashboardUser.atsScore}/100</strong> — honestly, that&apos;s mid. Add numbers to every bullet point in your experience (e.g. &quot;reduced load time by 40%&quot;) and you&apos;ll break 90 easily. No numbers = no callbacks.
               </div>
@@ -729,6 +758,8 @@ export default function DashboardPage() {
               })}
             </div>
           </motion.div>
+          </>
+          )}
 
         </div>
       </div>

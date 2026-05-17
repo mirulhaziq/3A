@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '../lib/supabase';
 import {
   GPT4_MODEL,
   getGPT4Client,
+  extractJson,
 } from '../lib/openai';
 import {
   analysisResultSchema,
@@ -90,7 +91,7 @@ async function generateAnalysis(
     throw new Error('OpenAI returned an empty analysis response.');
   }
 
-  const parsed = parseJsonObject(content);
+  const parsed = extractJson(content);
   return analysisResultSchema.parse(parsed);
 }
 
@@ -127,15 +128,6 @@ ${input.cvText}
 JOB DESCRIPTION:
 ${input.jobDescription}
 `.trim();
-}
-
-function parseJsonObject(content: string): unknown {
-  try {
-    const trimmed = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
-    return JSON.parse(trimmed);
-  } catch {
-    throw new Error('Failed to parse AI analysis JSON.');
-  }
 }
 
 function toJson(value: unknown): Json {

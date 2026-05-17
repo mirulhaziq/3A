@@ -2,6 +2,7 @@ import { ToolDefinition } from '../../types/agent.types';
 import { supabase } from '../../lib/supabase';
 import { callClaude } from '../../ai/claude';
 import { buildResumeAnalyzerPrompt } from '../../ai/prompts/resume-analyzer';
+import { extractJson } from '../../lib/openai';
 import { logger } from '../../lib/logger';
 
 const resumeTailorTool: ToolDefinition = {
@@ -95,7 +96,7 @@ const resumeTailorTool: ToolDefinition = {
 
     let analysis: Record<string, unknown>;
     try {
-      analysis = JSON.parse(analysisText) as Record<string, unknown>;
+      analysis = extractJson(analysisText) as Record<string, unknown>;
     } catch {
       throw new Error('Failed to parse resume analysis response');
     }
@@ -141,7 +142,7 @@ ${JSON.stringify((analysis as { rewrites?: unknown[] }).rewrites ?? [])}`;
 
     let atsScore: number;
     try {
-      const scoreResult = JSON.parse(scoreText) as { ats_score: number };
+      const scoreResult = extractJson(scoreText) as { ats_score: number };
       atsScore = scoreResult.ats_score;
     } catch {
       atsScore = 70;
@@ -180,7 +181,7 @@ ${tailoredCvText}`;
           ? finalScoreResponse.content[0].text
           : '';
       try {
-        const finalScore = JSON.parse(finalScoreText) as { ats_score: number };
+        const finalScore = extractJson(finalScoreText) as { ats_score: number };
         atsScore = finalScore.ats_score;
       } catch {
         // keep previous score

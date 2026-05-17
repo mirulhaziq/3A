@@ -44,6 +44,8 @@ interface RoadmapProfileData extends Record<string, unknown> {
   roadmapProgress?: RoadmapProgress;
   roadmapRole?: CareerRole;
   roadmapQuickCheckScore?: number;
+  customRoadmapLabel?: string;
+  customRoadmapPhases?: RoadmapPhase[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -283,7 +285,7 @@ function GeneratingScreen({ roleName, step, done }: { roleName: string; step: nu
           />
           <img
             src="/mascot-face.png"
-            alt="Cari"
+            alt="Cuppy"
             style={{ width: 88, height: 88, borderRadius: 22, objectFit: 'cover', position: 'relative', border: '3px solid #FFC800' }}
           />
         </div>
@@ -494,7 +496,7 @@ function SkillSheet({
 
           {/* Resources */}
           <div style={{ fontSize: 11, fontWeight: 700, color: '#ABABAB', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-            {resourcesLoading ? 'Cari is picking resources...' : 'Free Resources'}
+            {resourcesLoading ? 'Cuppy is picking resources...' : 'Free Resources'}
           </div>
           {resourcesLoading && (
             <div className="flex items-center gap-2 mb-4">
@@ -656,7 +658,7 @@ function VerticalPath({
               >
                 <img
                   src="/mascot-face.png"
-                  alt="Cari mascot"
+                  alt="Cuppy"
                   style={{ width: 40, height: 40, borderRadius: 10, objectFit: 'cover', border: '2px solid #FFC800' }}
                 />
               </motion.div>
@@ -926,6 +928,14 @@ export default function RoadmapPage() {
             ? profileData.roadmapQuickCheckScore
             : score;
         const backendProgress = normalizeProgress(profileData.roadmapProgress);
+
+        // Restore saved custom roadmap if present
+        if (profileData.customRoadmapLabel && Array.isArray(profileData.customRoadmapPhases) && profileData.customRoadmapPhases.length > 0) {
+          setCustomRoleLabel(profileData.customRoadmapLabel as string);
+          setPhases(profileData.customRoadmapPhases as RoadmapPhase[]);
+          return;
+        }
+
         const completedIds = new Set(backendProgress[backendRole] ?? []);
 
         setSelectedRole(backendRole);
@@ -1027,6 +1037,17 @@ export default function RoadmapPage() {
       // Give user a moment to see completion before revealing roadmap
       await new Promise<void>((resolve) => setTimeout(resolve, 900));
       setPhases(result.phases as RoadmapPhase[]);
+      // Persist custom roadmap to Supabase so it survives navigation
+      cariApi.getProfile().then(({ profile }) => {
+        const pd = profile.profileData as RoadmapProfileData;
+        return cariApi.updateProfile({
+          profileData: {
+            ...pd,
+            customRoadmapLabel: roleName,
+            customRoadmapPhases: result.phases,
+          },
+        });
+      }).catch(() => {});
       setGenerating(false);
       setGenDone(false);
       setGenStep(0);

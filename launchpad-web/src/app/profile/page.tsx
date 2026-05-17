@@ -467,6 +467,7 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<'profile' | 'resume'>('profile');
   const [expandedSections, setExpandedSections] = useState<string[]>(['summary']);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [editData, setEditData] = useState<UserProfile>(MOCK_PROFILE);
   const [resumeSubTab, setResumeSubTab] = useState<'foundation' | 'tailored'>('foundation');
   const [notifications, setNotifications] = useState(true);
@@ -488,23 +489,79 @@ export default function ProfilePage() {
         if (!active) return;
         const profileData = profile.profileData as Partial<UserProfile> & {
           githubSnapshot?: GitHubSnapshot;
+          parsedResume?: {
+            summary?: string;
+            personal?: { fullName?: string; email?: string; phone?: string; location?: string; linkedin?: string; github?: string };
+            experience?: { company: string; role: string; type?: string | null; startDate?: string | null; endDate?: string | null; bullets: string[] }[];
+            skills?: { languages?: string[]; frameworks?: string[]; toolsAndPlatforms?: string[]; softSkills?: string[] };
+            education?: { institution: string; degree?: string | null; field?: string | null; startDate?: string | null; endDate?: string | null; grade?: string | null }[];
+            projects?: { name: string; description?: string | null; techStack?: string[]; bullets?: string[] }[];
+            certifications?: { name: string; issuer?: string | null; date?: string | null }[];
+            awards?: { title: string; issuer?: string | null; year?: string | null }[];
+          };
         };
         setGithubSummary(profileData.githubSnapshot ?? null);
+
+        // Use parsedResume from onboarding as fallback when top-level fields are empty
+        const pr = profileData.parsedResume;
+        const summaryFallback = pr?.summary ?? '';
+        const experienceFallback: UserProfile['experience'] = (pr?.experience ?? []).map((e) => ({
+          id: `${e.role}-${e.company}`.replace(/\s+/g, '-').toLowerCase(),
+          role: e.role,
+          company: e.company,
+          type: e.type ?? '',
+          dateRange: [e.startDate, e.endDate ?? 'Present'].filter(Boolean).join(' – '),
+          bullets: e.bullets,
+        }));
+        const skillsFallback: UserProfile['skills'] = {
+          languages: pr?.skills?.languages ?? [],
+          frameworks: pr?.skills?.frameworks ?? [],
+          tools: pr?.skills?.toolsAndPlatforms ?? [],
+          soft: pr?.skills?.softSkills ?? [],
+        };
+        const educationFallback: UserProfile['education'] = (pr?.education ?? []).map((e) => ({
+          institution: e.institution,
+          degree: e.degree ?? '',
+          field: e.field ?? '',
+          dateRange: [e.startDate, e.endDate ?? 'Present'].filter(Boolean).join(' – '),
+          grade: e.grade ?? '',
+        }));
+        const projectsFallback: UserProfile['projects'] = (pr?.projects ?? []).map((p) => ({
+          id: p.name.replace(/\s+/g, '-').toLowerCase(),
+          name: p.name,
+          description: p.description ?? '',
+          tech: p.techStack ?? [],
+          showOnResume: true,
+          bullets: p.bullets ?? [],
+          date: '',
+          url: '',
+        }));
+
         setEditData({
           ...MOCK_PROFILE,
           ...profileData,
-          summary: (profileData.summary as string | undefined) ?? '',
-          projects: (profileData.projects as UserProfile['projects'] | undefined) ?? [],
-          experience: (profileData.experience as UserProfile['experience'] | undefined) ?? [],
-          skills: (profileData.skills as UserProfile['skills'] | undefined) ?? { languages: [], frameworks: [], tools: [], soft: [] },
-          education: (profileData.education as UserProfile['education'] | undefined) ?? [],
+          summary: (profileData.summary as string | undefined) || summaryFallback,
+          projects: (profileData.projects as UserProfile['projects'] | undefined)?.length
+            ? (profileData.projects as UserProfile['projects'])
+            : projectsFallback,
+          experience: (profileData.experience as UserProfile['experience'] | undefined)?.length
+            ? (profileData.experience as UserProfile['experience'])
+            : experienceFallback,
+          skills: (() => {
+            const stored = profileData.skills as UserProfile['skills'] | undefined;
+            const hasSkills = stored && (stored.languages?.length || stored.frameworks?.length || stored.tools?.length);
+            return hasSkills ? stored : skillsFallback;
+          })(),
+          education: (profileData.education as UserProfile['education'] | undefined)?.length
+            ? (profileData.education as UserProfile['education'])
+            : educationFallback,
           certifications: (profileData.certifications as UserProfile['certifications'] | undefined) ?? [],
           awards: (profileData.awards as UserProfile['awards'] | undefined) ?? [],
           extracurricular: (profileData.extracurricular as UserProfile['extracurricular'] | undefined) ?? [],
           personal: {
             ...MOCK_PROFILE.personal,
             ...(profileData.personal ?? {}),
-            fullName: profile.fullName ?? (profileData.personal as { fullName?: string } | undefined)?.fullName ?? '',
+            fullName: profile.fullName ?? (profileData.personal as { fullName?: string } | undefined)?.fullName ?? pr?.personal?.fullName ?? '',
             email: profile.email,
           },
           targetRole: profile.targetRole ?? (profileData as { targetRole?: string }).targetRole ?? '',
@@ -515,9 +572,11 @@ export default function ProfilePage() {
           atsScore: profile.atsScore,
           skillMatch: profile.skillMatch,
         });
+        setProfileLoading(false);
       })
       .catch(() => {
         // Keep the mock profile when offline or logged out.
+        setProfileLoading(false);
       });
 
     return () => {
@@ -1090,7 +1149,7 @@ export default function ProfilePage() {
                 <div className="rounded-xl p-3 mb-3" style={{ backgroundColor: 'var(--bg)', border: '1.5px solid var(--border)' }}>
                   <div className="grid grid-cols-2 gap-2 mb-2">
                     {[['role', 'Role / Title'], ['company', 'Company'], ['type', 'Type (Full-time / Internship)'], ['dateRange', 'Date Range']].map(([field, placeholder]) => (
-                      <input key={field} value={(exp as Record<string, string>)[field] ?? ''} onChange={e => setEditData(prev => ({ ...prev, experience: prev.experience.map(ex => ex.id === exp.id ? { ...ex, [field]: e.target.value } : ex) }))} placeholder={placeholder} className="rounded-lg px-3 py-1.5 col-span-1" style={{ fontSize: 13, border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none' }} />
+                      <input key={field} value={String((exp as Record<string, unknown>)[field] ?? '')} onChange={e => setEditData(prev => ({ ...prev, experience: prev.experience.map(ex => ex.id === exp.id ? { ...ex, [field]: e.target.value } : ex) }))} placeholder={placeholder} className="rounded-lg px-3 py-1.5 col-span-1" style={{ fontSize: 13, border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none' }} />
                     ))}
                   </div>
                   <div className="flex flex-col gap-1.5 mb-2">
@@ -1348,7 +1407,21 @@ export default function ProfilePage() {
 
         {resumeSubTab === 'foundation' ? (
           <>
-            <ResumePreview profile={editData} />
+            {profileLoading ? (
+              <div className="animate-pulse space-y-3 p-6 rounded-2xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+                <div className="h-6 bg-[#E8E0D0] rounded w-1/2 mx-auto" />
+                <div className="h-3 bg-[#E8E0D0] rounded w-1/3 mx-auto" />
+                <div className="h-px bg-[#E8E0D0] my-4" />
+                <div className="h-3 bg-[#E8E0D0] rounded w-full" />
+                <div className="h-3 bg-[#E8E0D0] rounded w-5/6" />
+                <div className="h-3 bg-[#E8E0D0] rounded w-4/6" />
+                <div className="h-16 bg-[#E8E0D0] rounded mt-4" />
+                <div className="h-3 bg-[#E8E0D0] rounded w-full" />
+                <div className="h-3 bg-[#E8E0D0] rounded w-3/4" />
+              </div>
+            ) : (
+              <ResumePreview profile={editData} />
+            )}
             <div className="flex gap-3 mt-4 pb-8 flex-wrap">
               <button onClick={() => window.print()} className="rounded-xl font-semibold px-4 py-2.5" style={{ backgroundColor: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 14, cursor: 'pointer' }}>
                 Export PDF

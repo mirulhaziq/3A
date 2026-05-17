@@ -35,7 +35,7 @@ export default function Sidebar() {
         <div className="flex items-center gap-3">
           <img
             src="/mascot-face.png"
-            alt="Cari"
+            alt="Cuppy"
             style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }}
           />
           <div>
@@ -73,7 +73,7 @@ export default function Sidebar() {
         <div className="flex items-center gap-2 px-1 mb-1">
           <img
             src="/mascot-face.png"
-            alt="Cari mascot"
+            alt="Cuppy"
             style={{ width: 36, height: 36, borderRadius: 10, border: '2px solid #FFC800', objectFit: 'cover', flexShrink: 0 }}
           />
           <div className="min-w-0">

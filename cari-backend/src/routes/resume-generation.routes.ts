@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth.middleware';
 import { uploadCV } from '../middleware/upload.middleware';
+import { supabase } from '../lib/supabase';
+import { logger } from '../lib/logger';
 import {
   resumeGenerationRequestSchema,
   resumeIdParamSchema,
@@ -47,26 +49,20 @@ resumeGenerationRouter.post('/parse', uploadCV, async (req, res, next): Promise<
 
     const parsed = await parseResumeUpload(req.file);
 
-    // Persist parsed data as the user's foundation profile (runs in parallel with cv_versions insert)
+    // Persist parsed data in parallel — both are important for future tailoring
     await Promise.all([
-      // Save structured resume data into profiles.profile_data
-      saveResumeAsProfile(req.user.id, parsed.resume),
-
-      // Store raw CV text in cv_versions for future re-imports
+      saveResumeAsProfile(req.user.id, parsed.resume).catch((err: unknown) => {
+        logger.warn({ err }, 'saveResumeAsProfile failed — profile not updated');
+      }),
       (async () => {
-        try {
-          const { getSupabaseAdmin } = await import('../lib/supabase');
-          const supabase = getSupabaseAdmin();
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('cv_versions') as any).insert({
-            user_id: req.user.id,
-            type: 'master',
-            cv_text: parsed.rawText,
-            ats_score: 0,
-            storage_path: `${req.user.id}/master.parsed`,
-          });
-        } catch {
-          // Non-fatal: cv_versions storage is best-effort
+        const { error } = await supabase.from('cv_versions').insert({
+          user_id: req.user.id,
+          type: 'master',
+          cv_text: parsed.rawText,
+          ats_score: 0,
+        });
+        if (error) {
+          logger.error({ error }, 'cv_versions insert failed — import-from-cv will return 404 until fixed');
         }
       })(),
     ]);

@@ -5,7 +5,7 @@ import { env } from '../config/env';
 const ANALYSIS_MODEL = 'nemo-super';
 const RESUME_MODEL = 'nemo-super';
 
-// gpt-4o via real OpenAI — for large structured outputs (resume gen/parse, analysis, roadmap, chat)
+// Real OpenAI — gpt-4o for all structured/large-output calls
 const GPT4_MODEL = 'gpt-4o';
 
 function isOpenAIConfigured(): boolean {
@@ -50,9 +50,36 @@ function getGPT4Client(): OpenAI {
 // ilmu.ai does not support response_format json_object — parse raw content instead
 function extractJson(content: string): unknown {
   const trimmed = content.trim();
-  // Strip markdown code fences: ```json ... ``` or ``` ... ```
-  const fenced = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
-  return JSON.parse(fenced);
+
+  // Strip markdown code fences (single or multi-line): ```json ... ``` or ``` ... ```
+  const fenced = trimmed
+    .replace(/^```(?:json)?\s*\n?/i, '')
+    .replace(/\n?```\s*$/i, '')
+    .trim();
+
+  // Try direct parse after stripping fences
+  try {
+    return JSON.parse(fenced);
+  } catch {
+    // Fall back: find the outermost JSON object or array by bracket boundaries
+    const objStart = fenced.indexOf('{');
+    const objEnd = fenced.lastIndexOf('}');
+    const arrStart = fenced.indexOf('[');
+    const arrEnd = fenced.lastIndexOf(']');
+
+    // Pick whichever valid bracket pair appears first
+    const useObj = objStart !== -1 && objEnd > objStart;
+    const useArr = arrStart !== -1 && arrEnd > arrStart;
+
+    if (useObj && (!useArr || objStart <= arrStart)) {
+      return JSON.parse(fenced.slice(objStart, objEnd + 1));
+    }
+    if (useArr) {
+      return JSON.parse(fenced.slice(arrStart, arrEnd + 1));
+    }
+
+    throw new Error('Failed to extract JSON from AI response');
+  }
 }
 
 export {

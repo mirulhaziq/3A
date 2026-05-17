@@ -12,6 +12,11 @@ const uuidParamSchema = z.object({
   id: z.string().uuid(),
 });
 
+// Accepts any non-empty string ID — needed for external JSearch job IDs like "jsearch:..."
+const jobIdParamSchema = z.object({
+  id: z.string().min(1),
+});
+
 const listJobsQuerySchema = z.object({
   q: z.string().trim().min(1).optional(),
   companyId: z.string().uuid().optional(),
@@ -93,6 +98,7 @@ export {
   companyPayloadSchema,
   createJobSchema,
   externalJobSearchQuerySchema,
+  jobIdParamSchema,
   listJobsQuerySchema,
   updateCompanySchema,
   updateJobSchema,

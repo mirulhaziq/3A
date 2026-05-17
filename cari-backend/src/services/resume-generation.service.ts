@@ -1,7 +1,9 @@
 import { RESUME_MODEL, GPT4_MODEL, getOpenAIClient, getGPT4Client, extractJson } from '../lib/openai';
-import { getSupabaseAdmin } from '../lib/supabase';
+import { supabase as legacySupabase, getSupabaseAdmin } from '../lib/supabase';
 import { NotFoundError } from '../middleware/error.middleware';
 import { parseCV } from '../lib/pdf-parser';
+import { retry } from '../lib/retry';
+import { logger } from '../lib/logger';
 import {
   generatedResumeSchema,
   type GeneratedResume,
@@ -68,35 +70,68 @@ async function generateResumeForUser(
   return mapSavedResume(data, null);
 }
 
+
+function buildEmptyResume(rawText: string): GeneratedResume {
+  const nameMatch = rawText.match(/^([A-Z][a-zA-Z]+(?: [A-Z][a-zA-Z]+)+)/m);
+  const emailMatch = rawText.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+  const phoneMatch = rawText.match(/(\+?6?0[\d -]{8,13}|\+?1[0-9]{10})/);
+  return {
+    metadata: { title: 'Parsed Resume', targetRole: null, tailoredForJob: false, keywords: [] },
+    personal: {
+      fullName: nameMatch?.[0] ?? 'Unknown',
+      location: null, phone: phoneMatch?.[0] ?? null,
+      email: emailMatch?.[0] ?? null, linkedin: null, github: null,
+    },
+    summary: '',
+    skills: { languages: [], frameworks: [], toolsAndPlatforms: [], softSkills: [] },
+    experience: [], projects: [], education: [], certifications: [], awards: [], extracurricular: [],
+  };
+}
+
 async function parseResumeFromText(rawText: string): Promise<GeneratedResume> {
   const cv = rawText.slice(0, 8000);
   const openai = getGPT4Client();
 
-  const completion = await openai.chat.completions.create({
-    model: GPT4_MODEL,
-    temperature: 0.1,
-    max_tokens: 3000,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are a precise CV data extractor. Extract all data from the CV exactly as written. Return only valid JSON, no markdown.',
-      },
-      {
-        role: 'user',
-        content: `Extract all information from this CV and return this exact JSON. Fill every field present in the CV.
+  let content = '';
+  try {
+    const completion = await retry(() => openai.chat.completions.create({
+      model: GPT4_MODEL,
+      temperature: 0.1,
+      max_tokens: 3000,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a precise CV data extractor. Extract all data from the CV exactly as written. Return only valid JSON, no markdown.',
+        },
+        {
+          role: 'user',
+          content: `Extract all information from this CV and return this exact JSON. Fill every field present in the CV. Use null for missing scalar fields and [] for missing arrays.
 
 {"fullName":"","location":null,"phone":null,"email":null,"linkedin":null,"github":null,"targetRole":null,"summary":"","languages":[],"frameworks":[],"tools":[],"soft":[],"experience":[{"company":"","role":"","type":null,"startDate":null,"endDate":null,"current":false,"bullets":[]}],"education":[{"institution":"","degree":null,"field":null,"startDate":null,"endDate":null,"grade":null}],"certifications":[{"name":"","issuer":null,"date":null}],"projects":[{"name":"","description":null,"techStack":[],"bullets":[],"repoUrl":null,"liveUrl":null}],"awards":[{"title":"","issuer":null,"year":null}],"extracurricular":[{"title":"","organization":null,"date":null,"bullets":[]}]}
 
 CV TEXT:
 ${cv}`,
-      },
-    ],
-  });
+        },
+      ],
+    }));
+    content = completion.choices[0]?.message?.content ?? '';
+  } catch (err) {
+    logger.error({ err }, 'GPT-4o CV parse failed — returning skeleton');
+    return buildEmptyResume(rawText);
+  }
 
-  const content = completion.choices[0]?.message?.content;
-  if (!content) throw new Error('Empty AI response for CV parsing.');
+  if (!content) {
+    logger.warn('Empty GPT-4o response for CV parsing');
+    return buildEmptyResume(rawText);
+  }
 
-  const raw = extractJson(content) as Record<string, unknown>;
+  let raw: Record<string, unknown>;
+  try {
+    raw = extractJson(content) as Record<string, unknown>;
+  } catch (err) {
+    logger.error({ err, content: content.slice(0, 200) }, 'extractJson failed');
+    return buildEmptyResume(rawText);
+  }
 
   const strings = (arr: unknown): string[] =>
     Array.isArray(arr) ? (arr as unknown[]).filter((x): x is string => typeof x === 'string') : [];
@@ -292,7 +327,7 @@ async function generateResume(
     throw new Error('OpenAI returned an empty resume response.');
   }
 
-  return generatedResumeSchema.parse(parseJsonObject(content));
+  return generatedResumeSchema.parse(extractJson(content));
 }
 
 function buildResumePrompt(input: ResumeGenerationRequestInput): string {
@@ -444,15 +479,6 @@ function mapSavedResume(
   };
 }
 
-function parseJsonObject(content: string): unknown {
-  try {
-    const trimmed = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
-    return JSON.parse(trimmed);
-  } catch {
-    throw new Error('Failed to parse AI resume JSON.');
-  }
-}
-
 function toJson(value: unknown): Json {
   return JSON.parse(JSON.stringify(value)) as Json;
 }
@@ -499,9 +525,13 @@ ${jobDescription ? `JOB DESCRIPTION CONTEXT:\n${jobDescription.slice(0, 1500)}` 
   const content = completion.choices[0]?.message?.content;
   if (!content) throw new Error('Empty AI response for bullet enhancement');
 
-  const trimmed = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
-  const parsed = JSON.parse(trimmed) as { suggestions?: BulletSuggestion[] };
-  const suggestions = parsed.suggestions ?? [];
+  const parsed = extractJson(content);
+  let suggestions: BulletSuggestion[];
+  if (Array.isArray(parsed)) {
+    suggestions = parsed as BulletSuggestion[];
+  } else {
+    suggestions = ((parsed as Record<string, unknown>).suggestions as BulletSuggestion[] | undefined) ?? [];
+  }
 
   return suggestions.map((s, i) => ({
     id: String(s.id ?? i),
@@ -573,7 +603,9 @@ ${bullets.map((b, i) => `${i + 1}. ${b}`).join('\n')}`;
 
 async function importProfileFromStoredCv(userId: string): Promise<ParsedResumeResponse> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
+
+  // Primary: get raw CV text from cv_versions
+  const { data: cvRow } = await supabase
     .from('cv_versions')
     .select('cv_text')
     .eq('user_id', userId)
@@ -582,17 +614,133 @@ async function importProfileFromStoredCv(userId: string): Promise<ParsedResumeRe
     .limit(1)
     .single();
 
-  if (error || !data) {
-    throw new Error('No CV found for this user. Please upload a CV first.');
+  const cvText = (cvRow as Record<string, unknown> | null)?.cv_text as string | undefined;
+
+  if (cvText && cvText.length >= 80) {
+    const resume = await parseResumeFromText(cvText);
+    await saveResumeAsProfile(userId, resume);
+    return { rawText: cvText, resume, templateId: 'cari-amirul-single-column-v1' };
   }
 
-  const cvText = (data as Record<string, unknown>).cv_text as string | undefined;
-  if (!cvText) throw new Error('No CV found for this user. Please upload a CV first.');
-  if (cvText.length < 80) throw new Error('Stored CV text is too short to parse.');
+  // Fallback: reconstruct from profiles.profile_data (written by saveResumeAsProfile on every parse)
+  // This handles users who uploaded a CV before cv_versions was being saved correctly.
+  const { data: profileRow } = await supabase
+    .from('profiles')
+    .select('profile_data')
+    .eq('id', userId)
+    .single();
 
-  const resume = await parseResumeFromText(cvText);
-  await saveResumeAsProfile(userId, resume);
-  return { rawText: cvText, resume, templateId: 'cari-amirul-single-column-v1' };
+  const pd = (profileRow as Record<string, unknown> | null)?.profile_data as Record<string, unknown> | undefined;
+  const pdPersonal = pd?.personal as Record<string, string> | undefined;
+  const pdExperience = pd?.experience as unknown[] | undefined;
+
+  if (pd && (pdPersonal?.fullName || (pdExperience && pdExperience.length > 0))) {
+    const resume = profileDataToResume(pd);
+    const rawText = resumeToRawText(resume);
+    // Backfill cv_versions so future calls use the primary path
+    const { error: backfillError } = await legacySupabase.from('cv_versions').insert({
+      user_id: userId,
+      type: 'master',
+      cv_text: rawText,
+      ats_score: 0,
+    });
+    if (backfillError) {
+      logger.warn({ error: backfillError }, 'cv_versions backfill failed');
+    }
+    return { rawText, resume, templateId: 'cari-amirul-single-column-v1' };
+  }
+
+  throw new NotFoundError('No CV found. Please upload your CV first.');
+}
+
+function profileDataToResume(pd: Record<string, unknown>): GeneratedResume {
+  const personal = (pd.personal ?? {}) as Record<string, string>;
+  const skills = (pd.skills ?? {}) as Record<string, string[]>;
+  const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+  const arr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]).filter(s => typeof s === 'string') : []);
+
+  return {
+    metadata: {
+      title: 'Foundation Resume',
+      targetRole: str(personal.targetRole),
+      tailoredForJob: false,
+      keywords: arr(skills.languages),
+    },
+    personal: {
+      fullName: personal.fullName || 'Unknown',
+      location: str(personal.location),
+      phone: str(personal.phone),
+      email: str(personal.email),
+      linkedin: str(personal.linkedin),
+      github: str(personal.github),
+    },
+    summary: typeof pd.summary === 'string' ? pd.summary : '',
+    skills: {
+      languages: arr(skills.languages),
+      frameworks: arr(skills.frameworks),
+      toolsAndPlatforms: arr(skills.tools),
+      softSkills: arr(skills.soft),
+    },
+    experience: (Array.isArray(pd.experience) ? pd.experience : []).map((e: Record<string, unknown>) => ({
+      company: String(e.company ?? ''),
+      role: String(e.role ?? ''),
+      type: str(e.type),
+      startDate: null,
+      endDate: null,
+      current: false,
+      bullets: arr(e.bullets),
+    })),
+    projects: (Array.isArray(pd.projects) ? pd.projects : []).map((p: Record<string, unknown>) => ({
+      name: String(p.name ?? ''),
+      description: str(p.description),
+      techStack: arr(p.tech),
+      bullets: arr(p.bullets),
+      repoUrl: str(p.url),
+      liveUrl: null,
+    })),
+    education: (Array.isArray(pd.education) ? pd.education : []).map((e: Record<string, unknown>) => ({
+      institution: String(e.institution ?? ''),
+      degree: str(e.degree),
+      field: str(e.field),
+      startDate: null,
+      endDate: null,
+      grade: str(e.grade),
+    })),
+    certifications: (Array.isArray(pd.certifications) ? pd.certifications : []).map((c: Record<string, unknown>) => ({
+      name: String(c.name ?? ''),
+      issuer: str(c.issuer),
+      date: str(c.date),
+    })),
+    awards: (Array.isArray(pd.awards) ? pd.awards : []).map((a: Record<string, unknown>) => ({
+      title: String(a.name ?? ''),
+      issuer: str(a.issuer),
+      year: str(a.date),
+    })),
+    extracurricular: [],
+  };
+}
+
+function resumeToRawText(r: GeneratedResume): string {
+  const lines: string[] = [
+    r.personal.fullName,
+    [r.personal.email, r.personal.phone, r.personal.location].filter(Boolean).join(' | '),
+    '',
+    r.summary,
+    '',
+    'SKILLS',
+    [...r.skills.languages, ...r.skills.frameworks, ...r.skills.toolsAndPlatforms].join(', '),
+    '',
+  ];
+  for (const e of r.experience) {
+    lines.push(`${e.role} at ${e.company}`, ...e.bullets.map(b => `- ${b}`), '');
+  }
+  for (const e of r.education) {
+    lines.push(`${e.institution} — ${e.degree ?? ''} ${e.field ?? ''}`.trim(), '');
+  }
+  for (const p of r.projects) {
+    lines.push(`Project: ${p.name}`, ...p.bullets.map(b => `- ${b}`), '');
+  }
+  return lines.join('\n').trim();
 }
 
 /**

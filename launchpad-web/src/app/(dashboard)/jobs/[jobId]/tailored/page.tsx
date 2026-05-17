@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { use, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -205,7 +207,8 @@ export default function TailoredResumePage({
 }: {
   params: Promise<{ jobId: string }>;
 }) {
-  const { jobId } = use(params);
+  const { jobId: rawJobId } = use(params);
+  const jobId = decodeURIComponent(rawJobId);
   const searchParams = useSearchParams();
   const requestedResumeId = searchParams.get('resumeId');
   const [showToast, setShowToast] = useState(false);
@@ -220,8 +223,24 @@ export default function TailoredResumePage({
   const [savedResumeId, setSavedResumeId] = useState<string | null>(requestedResumeId);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [matchScore, setMatchScore] = useState<number | null>(null);
+  const [cuppyVerdict, setCuppyVerdict] = useState<string | null>(null);
+  const [atsOptimized, setAtsOptimized] = useState(false);
 
   const resumeToShow = editMode ? editableResume : editableResume;
+
+  // Restore analysis result (match score + verdict) saved by the job detail page
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('cari_last_analysis');
+      if (stored) {
+        const data = JSON.parse(stored) as { matchScore?: number; verdict?: string; atsOptimized?: boolean };
+        if (typeof data.matchScore === 'number') setMatchScore(data.matchScore);
+        if (typeof data.verdict === 'string') setCuppyVerdict(data.verdict);
+        if (typeof data.atsOptimized === 'boolean') setAtsOptimized(data.atsOptimized);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -236,10 +255,15 @@ export default function TailoredResumePage({
           setSavedResumeId(data.resume.id);
           setGeneratedResume(data.resume.resume);
           setEditableResume(toEditableResume(data.resume.resume));
+          setAiSuggestions([]);
           return;
         }
 
-        const existing = await cariApi.listResumes({ jobId, limit: 1 });
+        const isExternalJobId = jobId.startsWith('jsearch:') || jobId.startsWith('ext-');
+        const existing = await cariApi.listResumes({
+          jobId: isExternalJobId ? undefined : jobId,
+          limit: 1,
+        });
         if (existing.resumes[0]) {
           if (!active) return;
           setSavedResumeId(existing.resumes[0].id);
@@ -248,32 +272,43 @@ export default function TailoredResumePage({
           return;
         }
 
-        const [jobData, profileData] = await Promise.all([
-          cariApi.getJob(jobId),
-          cariApi.getProfile(),
-        ]);
+        // Get CV data and job description
+        const { parsed: cvParsed } = await cariApi.importFromCv();
+
+        let jobTitle = 'Tailored Resume';
+        let jobDescription = '';
+
+        if (!isExternalJobId) {
+          try {
+            const { job: jobData } = await cariApi.getJob(jobId);
+            jobTitle = jobData.title ? `${jobData.title} Tailored Resume` : jobTitle;
+            jobDescription = jobData.description ?? '';
+          } catch { /* fall through to sessionStorage */ }
+        }
+
+        if (!jobDescription) {
+          const stored = sessionStorage.getItem('cari_scanned_job');
+          if (stored) {
+            try {
+              const storedJob = JSON.parse(stored) as { title?: string; description?: string };
+              if (storedJob.title && jobTitle === 'Tailored Resume') jobTitle = `${storedJob.title} Tailored Resume`;
+              if (storedJob.description) jobDescription = storedJob.description;
+            } catch { /* ignore */ }
+          }
+        }
+
         const generated = await cariApi.generateResume({
-          title: `${jobData.job.title} Tailored Resume`,
-          profileData: {
-            ...profileData.profile.profileData,
-            personal: {
-              ...(typeof profileData.profile.profileData.personal === 'object' &&
-              profileData.profile.profileData.personal !== null
-                ? profileData.profile.profileData.personal
-                : {}),
-              fullName: profileData.profile.fullName,
-              email: profileData.profile.email,
-            },
-            targetRole: profileData.profile.targetRole,
-          },
-          jobDescription: jobData.job.description,
-          jobId,
+          title: jobTitle,
+          profileData: cvParsed.resume as unknown as Record<string, unknown>,
+          jobDescription: jobDescription.length >= 80 ? jobDescription : undefined,
+          jobId: isExternalJobId ? null : jobId,
         });
 
         if (!active) return;
         setSavedResumeId(generated.resume.id);
         setGeneratedResume(generated.resume.resume);
         setEditableResume(toEditableResume(generated.resume.resume));
+        setAiSuggestions([]); // reset so AI Enhance re-runs on real bullets
       } catch {
         // Keep the designed mock preview when offline or unauthenticated.
       } finally {
@@ -388,7 +423,7 @@ export default function TailoredResumePage({
     <div className="min-h-screen bg-[#F5F0E8] flex">
       <div className="no-print"><Sidebar /></div>
 
-      <div className="flex-1 lg:ml-[220px] flex flex-col min-h-screen">
+      <div className="flex-1 lg:ml-[220px] print:ml-0 flex flex-col min-h-screen">
 
         {/* DESKTOP: Tailoring banner */}
         <motion.div
@@ -405,20 +440,25 @@ export default function TailoredResumePage({
                 TAILORING FOR:
               </p>
               <p className="text-[20px] font-bold text-[#1A1A1A]">
-                Software Engineer II @ TechFlow
+                {generatedResume?.metadata.title ?? (loading ? 'Preparing...' : 'Tailored Resume')}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="bg-[#FFF8E1] border border-[#FFC800] rounded-full px-4 py-1.5 text-[13px] font-bold text-[#1A1A1A]">
-              ⚡ 94% Match
-            </span>
-            <span className="bg-[#E8F7FF] border border-[#1CB0F6] rounded-full px-4 py-1.5 text-[13px] font-bold text-[#1CB0F6]">
-              ✓ ATS Optimized
-            </span>
+            {matchScore !== null && (
+              <span className="bg-[#FFF8E1] border border-[#FFC800] rounded-full px-4 py-1.5 text-[13px] font-bold text-[#1A1A1A]">
+                ⚡ {matchScore}% Match
+              </span>
+            )}
+            {atsOptimized && (
+              <span className="bg-[#E8F7FF] border border-[#1CB0F6] rounded-full px-4 py-1.5 text-[13px] font-bold text-[#1CB0F6]">
+                ✓ ATS Optimized
+              </span>
+            )}
             <button
               onClick={() => { void handleOpenAiEnhance(); }}
-              className="flex items-center gap-1.5 bg-[#F0EBFF] border border-[#7C5CBF] rounded-full px-3.5 py-1.5 text-[13px] font-bold text-[#7C5CBF]"
+              disabled={!generatedResume}
+              className="flex items-center gap-1.5 bg-[#F0EBFF] border border-[#7C5CBF] rounded-full px-3.5 py-1.5 text-[13px] font-bold text-[#7C5CBF] disabled:opacity-50"
             >
               <Sparkles size={14} /> AI Enhance
             </button>
@@ -447,81 +487,61 @@ export default function TailoredResumePage({
         )}
 
         {/* MOBILE: Match Score Card */}
-        <div className="lg:hidden no-print mx-4 mt-3 mb-4 bg-white rounded-2xl border border-[#E8E0D0] p-4">
-          <div className="flex items-center gap-4">
-            {/* SVG ring score */}
-            <div className="w-20 h-20 flex-shrink-0">
-              <svg width="80" height="80" viewBox="0 0 80 80">
-                <circle
-                  cx="40"
-                  cy="40"
-                  r="30"
-                  fill="none"
-                  stroke="#E8E0D0"
-                  strokeWidth="8"
-                />
-                <motion.circle
-                  cx="40"
-                  cy="40"
-                  r="30"
-                  fill="none"
-                  stroke="#1CB0F6"
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                  strokeDasharray="188.5"
-                  initial={{ strokeDashoffset: 188.5 }}
-                  animate={{ strokeDashoffset: 18.85 }}
-                  transition={{ duration: 1.5, ease: 'easeOut' }}
-                  transform="rotate(-90 40 40)"
-                />
-                <text
-                  x="40"
-                  y="37"
-                  textAnchor="middle"
-                  fontSize="18"
-                  fontWeight="800"
-                  fill="#1A1A1A"
-                  fontFamily="Nunito"
-                >
-                  90
-                </text>
-                <text
-                  x="40"
-                  y="50"
-                  textAnchor="middle"
-                  fontSize="8"
-                  fill="#6B6B6B"
-                  fontFamily="Nunito"
-                >
-                  SCORE
-                </text>
-              </svg>
+        {matchScore !== null && (
+          <div className="lg:hidden no-print mx-4 mt-3 mb-4 bg-white rounded-2xl border border-[#E8E0D0] p-4">
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 flex-shrink-0">
+                <svg width="80" height="80" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="30" fill="none" stroke="#E8E0D0" strokeWidth="8" />
+                  <motion.circle
+                    cx="40" cy="40" r="30" fill="none"
+                    stroke={matchScore >= 75 ? '#FFC800' : matchScore >= 55 ? '#1CB0F6' : '#FF4B4B'}
+                    strokeWidth="8" strokeLinecap="round" strokeDasharray="188.5"
+                    initial={{ strokeDashoffset: 188.5 }}
+                    animate={{ strokeDashoffset: 188.5 * (1 - matchScore / 100) }}
+                    transition={{ duration: 1.5, ease: 'easeOut' }}
+                    transform="rotate(-90 40 40)"
+                  />
+                  <text x="40" y="37" textAnchor="middle" fontSize="18" fontWeight="800" fill="#1A1A1A" fontFamily="Nunito">
+                    {matchScore}
+                  </text>
+                  <text x="40" y="50" textAnchor="middle" fontSize="8" fill="#6B6B6B" fontFamily="Nunito">SCORE</text>
+                </svg>
+              </div>
+              <div>
+                <p className="text-[18px] font-bold text-[#1A1A1A]">
+                  {matchScore >= 80 ? 'Strong Match!' : matchScore >= 55 ? 'Close Match' : 'Keep Improving'}
+                </p>
+                <p className="text-[13px] text-[#6B6B6B] mt-1 leading-relaxed">
+                  {matchScore >= 80
+                    ? 'Your profile is well-aligned with this role.'
+                    : matchScore >= 55
+                    ? 'A few targeted tweaks will boost your odds.'
+                    : 'Focus on the key skill gaps for this role.'}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-[18px] font-bold text-[#1A1A1A]">Excellent Match!</p>
-              <p className="text-[13px] text-[#6B6B6B] mt-1 leading-relaxed">
-                Your profile fits 90% of the key job requirements.
+          </div>
+        )}
+
+        {/* MOBILE: Cuppy message */}
+        {cuppyVerdict && (
+          <div className="lg:hidden no-print mx-4 mb-4 flex items-start gap-3">
+            <img
+              src="/mascot-face.png"
+              alt="Cuppy"
+              style={{ width: 44, height: 44, borderRadius: 10, border: '2px solid #FFC800', objectFit: 'cover', flexShrink: 0 }}
+            />
+            <div className="flex-1 bg-white rounded-2xl border border-[#E8E0D0] p-4">
+              <p className="text-[14px] font-semibold text-[#1A1A1A] leading-relaxed italic">
+                &ldquo;{cuppyVerdict}&rdquo;
               </p>
             </div>
           </div>
-        </div>
-
-        {/* MOBILE: Cuppy message */}
-        <div className="lg:hidden no-print mx-4 mb-4 flex items-start gap-3">
-          <img
-            src="/mascot-face.png"
-            alt="Cari"
-            style={{ width: 44, height: 44, borderRadius: 10, border: '2px solid #FFC800', objectFit: 'cover', flexShrink: 0 }}
-          />
-          <div className="flex-1 bg-white rounded-2xl border border-[#E8E0D0] p-4">
-            <p className="text-[14px] font-semibold text-[#1A1A1A] leading-relaxed italic">
-              {MOCK_TAILORED_RESUME.cuppyInsight}
-            </p>
-          </div>
-        </div>
+        )}
 
         {/* MOBILE: Resume Preview */}
-        <div className="lg:hidden mx-4 mb-4">
+        <div className="lg:hidden print:hidden mx-4 mb-4">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[20px] font-bold text-[#1A1A1A]">Resume Preview</p>
             <span className="bg-[#E8F7FF] border border-[#1CB0F6] rounded-lg px-2.5 py-1 text-[12px] font-bold text-[#1CB0F6] uppercase">
@@ -589,20 +609,15 @@ export default function TailoredResumePage({
         </div>
 
         {/* DESKTOP: Two-column grid */}
-        <div className="hidden lg:grid lg:grid-cols-[1fr_320px] gap-6 p-6 max-w-[1200px]">
+        <div className="hidden lg:grid print:block lg:grid-cols-[1fr_320px] gap-6 p-6 max-w-[1200px]">
 
           {/* LEFT: Resume Preview */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-            className="bg-white rounded-2xl border border-[#E8E0D0] px-10 py-8"
-          >
+          <div className="bg-white rounded-2xl border border-[#E8E0D0] px-10 py-8">
             {/* Resume Header */}
             <div className="border-b border-[#E8E0D0] pb-5 mb-6">
               <p className="text-[28px] font-bold text-[#1A1A1A]">{resume.name}</p>
               <p className="text-[14px] text-[#FFC800] uppercase tracking-widest mt-1">
-                Senior Frontend Engineer
+                {generatedResume?.metadata.targetRole ?? generatedResume?.metadata.title ?? ''}
               </p>
               <div className="flex flex-wrap gap-4 mt-3">
                 <span className="text-[12px] text-[#6B6B6B]">{resume.email}</span>
@@ -696,7 +711,7 @@ export default function TailoredResumePage({
             <div className="border border-dashed border-[#E8E0D0] rounded-lg h-20 bg-[#FAFAF8] mt-5 flex items-center justify-center">
               <p className="text-[12px] text-[#ABABAB] italic">Page 2 — Education & Awards</p>
             </div>
-          </motion.div>
+          </div>
 
           {/* RIGHT: sidebar cards */}
           <div className="flex flex-col gap-4 sticky top-[80px] self-start no-print">
@@ -721,7 +736,7 @@ export default function TailoredResumePage({
                 >
                   <div className="w-[120px] h-[120px] bg-[#FFC800] rounded-full flex flex-col items-center justify-center shadow-[inset_0_0_0_4px_rgba(255,255,255,0.2),0_4px_16px_rgba(255,200,0,0.4)]">
                     <span className="text-[32px] font-extrabold text-[#1A1A1A] leading-none">
-                      94%
+                      {matchScore !== null ? `${matchScore}%` : '--'}
                     </span>
                     <span className="text-[11px] font-semibold text-[#1A1A1A] mt-0.5">MATCH</span>
                   </div>
@@ -729,8 +744,13 @@ export default function TailoredResumePage({
               </div>
 
               <p className="text-[13px] text-[#6B6B6B] text-center leading-relaxed">
-                You&apos;re a top candidate! Your profile strongly aligns with TechFlow&apos;s
-                technical requirements.
+                {matchScore !== null
+                  ? matchScore >= 80
+                    ? "You're a top candidate! Your profile strongly aligns with this role's requirements."
+                    : matchScore >= 60
+                      ? "Good fit! A few tweaks could make your profile stand out more."
+                      : "Some gaps detected. Review the job requirements and consider enhancing your resume."
+                  : 'Run a job analysis to see your match score.'}
               </p>
             </motion.div>
 
@@ -744,13 +764,13 @@ export default function TailoredResumePage({
               <div className="flex gap-3 items-start">
                 <img
                   src="/mascot-face.png"
-                  alt="Cari"
+                  alt="Cuppy"
                   style={{ width: 44, height: 44, borderRadius: 10, border: '2px solid #FFC800', objectFit: 'cover', flexShrink: 0 }}
                 />
                 <div>
-                  <p className="text-[11px] font-bold text-[#FFC800] uppercase tracking-wide mb-1">Cari&apos;s Verdict</p>
+                  <p className="text-[11px] font-bold text-[#FFC800] uppercase tracking-wide mb-1">Cuppy&apos;s Verdict</p>
                   <div className="flex-1 bg-[#FFF8E1] border border-[#FFC800] rounded-xl p-3 text-[13px] text-[#1A1A1A] leading-relaxed italic">
-                    {MOCK_TAILORED_RESUME.cuppyTip}
+                    {cuppyVerdict ?? 'Complete a job scan to get Cari\'s verdict on your fit.'}
                   </div>
                 </div>
               </div>
@@ -767,6 +787,25 @@ export default function TailoredResumePage({
               <Rocket size={18} className="text-white" />
               <span className="text-[14px] font-bold text-white uppercase tracking-wider">
                 APPLY NOW
+              </span>
+            </motion.button>
+
+            {/* Apply & Download */}
+            <motion.button
+              whileTap={{ scale: 0.97, y: 2 }}
+              onClick={() => {
+                if (!savedResumeId) return;
+                void cariApi.applyToJob(jobId, savedResumeId).then(() => {
+                  handlePrint();
+                });
+              }}
+              disabled={!savedResumeId}
+              className="w-full h-[52px] bg-[#FFC800] rounded-2xl shadow-[0_4px_0_#CC9F00] flex items-center justify-center gap-2 no-print disabled:opacity-50"
+            >
+              <Rocket size={18} className="text-[#1A1A1A]" />
+              <Download size={18} className="text-[#1A1A1A]" />
+              <span className="text-[14px] font-bold text-[#1A1A1A] uppercase tracking-wider">
+                APPLY &amp; DOWNLOAD
               </span>
             </motion.button>
 
@@ -796,26 +835,42 @@ export default function TailoredResumePage({
           </div>
         </div>
 
-        {/* MOBILE: Edit + AI Enhance buttons */}
-        <div className="lg:hidden fixed bottom-[72px] left-0 right-0 z-30 flex gap-2 px-4 pb-2 no-print">
+        {/* MOBILE: Apply & Download + Edit + AI Enhance buttons */}
+        <div className="lg:hidden fixed bottom-[72px] left-0 right-0 z-30 flex flex-col gap-2 px-4 pb-2 no-print">
           <button
-            onClick={handleEditToggle}
-            disabled={saving}
-            className="flex-1 h-[44px] rounded-2xl flex items-center justify-center gap-2 text-[13px] font-bold"
-            style={{
-              background: editMode ? '#FFC800' : '#F5F0E8',
-              border: editMode ? '1px solid #CC9F00' : '1px solid #E8E0D0',
-              color: '#1A1A1A',
+            onClick={() => {
+              if (!savedResumeId) return;
+              void cariApi.applyToJob(jobId, savedResumeId).then(() => {
+                handlePrint();
+              });
             }}
+            disabled={!savedResumeId}
+            className="w-full h-[44px] rounded-2xl flex items-center justify-center gap-2 text-[13px] font-bold bg-[#FFC800] disabled:opacity-50"
           >
-            <Pencil size={14} /> {saving ? 'Saving' : editMode ? 'Save' : 'Edit'}
+            <Rocket size={14} className="text-[#1A1A1A]" />
+            <Download size={14} className="text-[#1A1A1A]" />
+            <span className="text-[#1A1A1A]">APPLY &amp; DOWNLOAD</span>
           </button>
-          <button
-            onClick={() => { void handleOpenAiEnhance(); }}
-            className="flex-1 h-[44px] rounded-2xl flex items-center justify-center gap-2 text-[13px] font-bold bg-[#F0EBFF] border border-[#7C5CBF] text-[#7C5CBF]"
-          >
-            <Sparkles size={14} /> AI Enhance
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleEditToggle}
+              disabled={saving}
+              className="flex-1 h-[44px] rounded-2xl flex items-center justify-center gap-2 text-[13px] font-bold"
+              style={{
+                background: editMode ? '#FFC800' : '#F5F0E8',
+                border: editMode ? '1px solid #CC9F00' : '1px solid #E8E0D0',
+                color: '#1A1A1A',
+              }}
+            >
+              <Pencil size={14} /> {saving ? 'Saving' : editMode ? 'Save' : 'Edit'}
+            </button>
+            <button
+              onClick={() => { void handleOpenAiEnhance(); }}
+              className="flex-1 h-[44px] rounded-2xl flex items-center justify-center gap-2 text-[13px] font-bold bg-[#F0EBFF] border border-[#7C5CBF] text-[#7C5CBF]"
+            >
+              <Sparkles size={14} /> AI Enhance
+            </button>
+          </div>
         </div>
 
         {/* MOBILE: bottom nav */}
@@ -932,7 +987,11 @@ export default function TailoredResumePage({
         <style>{`
           @media print {
             .no-print { display: none !important; }
-            body { background: white; }
+            body, html { background: white !important; margin: 0; padding: 0; }
+            /* Freeze any remaining Framer Motion inline styles */
+            * { animation: none !important; transition: none !important; opacity: 1 !important; transform: none !important; }
+            /* Keep borders and text visible */
+            p, span, li, div { color: inherit; }
           }
         `}</style>
 

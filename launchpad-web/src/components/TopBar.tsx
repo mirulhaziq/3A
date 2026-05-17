@@ -23,7 +23,7 @@ export default function TopBar() {
       <div className="flex items-center gap-2">
         <img
           src="/mascot-face.png"
-          alt="Cari"
+          alt="Cuppy"
           style={{ width: 32, height: 32, borderRadius: 9, objectFit: 'cover' }}
         />
         <span style={{ fontSize: 16, fontWeight: 800, color: '#1A1A1A' }}>Cari</span>
