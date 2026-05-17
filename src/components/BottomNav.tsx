@@ -22,13 +22,11 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 lg:hidden z-50"
+      className="flex items-center fixed bottom-0 left-0 right-0 lg:hidden z-50"
       style={{
         background: '#FFFFFF',
         borderTop: '1px solid #E8E0D0',
         height: 64,
-        display: 'flex',
-        alignItems: 'center',
       }}
     >
       {tabs.map(({ href, label, icon: Icon }) => {
