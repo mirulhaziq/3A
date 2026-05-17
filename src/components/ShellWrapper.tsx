@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
 import { PageTransition } from '@/components/PageTransition';
 
-const AUTH_ROUTES = ['/login', '/register', '/signup', '/forgot-password', '/dashboard', '/onboarding', '/jobs', '/roadmap', '/profile'];
+const AUTH_ROUTES = ['/login', '/register', '/signup', '/forgot-password', '/dashboard', '/onboarding', '/jobs', '/roadmap', '/profile', '/resumes'];
 
 export default function ShellWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

@@ -2,15 +2,16 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Briefcase, Map, User, Rocket, Settings, LogOut, TrendingUp } from 'lucide-react';
+import { Home, Briefcase, Map, User, Rocket, Settings, LogOut, TrendingUp, ScrollText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MOCK_PROFILE } from '@/lib/mock-data';
 
 const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Home', icon: Home },
-  { href: '/jobs', label: 'Jobs', icon: Briefcase },
-  { href: '/roadmap', label: 'Roadmap', icon: Map },
-  { href: '/profile', label: 'Profile', icon: User },
+  { href: '/dashboard', label: 'Home',    icon: Home       },
+  { href: '/jobs',      label: 'Jobs',    icon: Briefcase  },
+  { href: '/resumes',   label: 'Resumes', icon: ScrollText },
+  { href: '/roadmap',   label: 'Roadmap', icon: Map        },
+  { href: '/profile',   label: 'Profile', icon: User       },
 ] as const;
 
 export default function Sidebar() {

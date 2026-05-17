@@ -2,14 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Briefcase, Map, User } from 'lucide-react';
+import { Home, Briefcase, Map, User, ScrollText } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const tabs = [
-  { href: '/dashboard', label: 'Home',    icon: Home      },
-  { href: '/jobs',      label: 'Jobs',    icon: Briefcase },
-  { href: '/roadmap',   label: 'Roadmap', icon: Map       },
-  { href: '/profile',   label: 'Profile', icon: User      },
+  { href: '/dashboard', label: 'Home',    icon: Home       },
+  { href: '/jobs',      label: 'Jobs',    icon: Briefcase  },
+  { href: '/resumes',   label: 'Resumes', icon: ScrollText },
+  { href: '/roadmap',   label: 'Roadmap', icon: Map        },
+  { href: '/profile',   label: 'Profile', icon: User       },
 ];
 
 const HIDDEN_ROUTES = ['/onboarding', '/handoff', '/login'];
