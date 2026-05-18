@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { cariAuth } from '@/lib/cari-api';
+import { cariAuth, cariApi } from '@/lib/cari-api';
 
 export default function RootPage() {
   const router = useRouter();
@@ -12,17 +12,29 @@ export default function RootPage() {
     const token = cariAuth.getAccessToken();
 
     if (!user || !token) {
-      // Not logged in → go to login
       router.replace('/login');
       return;
     }
 
-    // Logged in — check onboarding status
-    if (!user.onboarded) {
-      router.replace('/onboarding');
-    } else {
-      router.replace('/dashboard');
-    }
+    // Verify the token is still valid against the live API.
+    // If the backend is unreachable or the token is expired, clear and go to login.
+    cariApi.me()
+      .then(({ user: freshUser }) => {
+        // Persist the fresh user so onboarded flag is up to date
+        const refreshToken = typeof window !== 'undefined'
+          ? localStorage.getItem('cari_refresh_token') ?? ''
+          : '';
+        cariAuth.setSession(
+          { accessToken: token, refreshToken, expiresAt: null, tokenType: 'bearer' },
+          freshUser
+        );
+        router.replace(freshUser.onboarded ? '/dashboard' : '/onboarding');
+      })
+      .catch(() => {
+        // Token invalid or backend unreachable — send to login
+        cariAuth.clear();
+        router.replace('/login');
+      });
   }, [router]);
 
   return (
