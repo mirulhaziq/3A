@@ -54,7 +54,7 @@ app.get('/', (_req, res) => {
 });
 
 app.get('/health', (_req, res) => {
-  res.redirect(307, `${env.API_PREFIX}/health`);
+  res.json({ success: true, data: { status: 'ok' } });
 });
 
 app.use(env.API_PREFIX, router);
