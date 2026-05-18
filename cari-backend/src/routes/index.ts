@@ -48,4 +48,17 @@ router.use('/applications', applicationRouter);
 router.use('/company-portal', companyPortalRouter);
 router.use('/roadmap', roadmapRouter);
 
+// Temporary diagnostic — remove after debugging
+router.get('/debug-resume-routes', (_req, res) => {
+  const stack = (resumeGenerationRouter as unknown as { stack: Array<{ route?: { path: string; methods: Record<string, boolean> }; handle?: { name: string } }> }).stack;
+  res.json({
+    routeCount: stack.length,
+    routes: stack.map(l => ({
+      path: l.route?.path ?? '(middleware)',
+      methods: l.route?.methods ?? {},
+      fn: l.handle?.name ?? 'anonymous',
+    })),
+  });
+});
+
 export { router };
