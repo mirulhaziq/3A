@@ -1,4 +1,6 @@
-import pdfParse from 'pdf-parse';
+// Use the internal lib path to avoid pdf-parse's test-file read at module load
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require('pdf-parse/lib/pdf-parse') as typeof import('pdf-parse')['default'];
 import mammoth from 'mammoth';
 
 async function parseCV(buffer: Buffer, mimetype: string): Promise<string> {

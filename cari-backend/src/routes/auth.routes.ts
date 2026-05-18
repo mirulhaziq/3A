@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { AuthError } from '../middleware/error.middleware';
 import {
   loginSchema,
   refreshSessionSchema,
@@ -17,10 +18,7 @@ authRouter.post('/register', async (req, res, next): Promise<void> => {
   try {
     const input = registerSchema.parse(req.body);
     const data = await register(input);
-    res.json({
-      success: true,
-      data,
-    });
+    res.json({ success: true, data });
   } catch (error) {
     next(error);
   }
@@ -32,7 +30,10 @@ authRouter.post('/login', async (req, res, next): Promise<void> => {
     const data = await login(input);
     res.json({ success: true, data });
   } catch (error) {
-    next(error);
+    // Supabase auth errors (wrong password, user not found) should be 401 not 500
+    next(error instanceof AuthError ? error : new AuthError(
+      error instanceof Error ? error.message : 'Login failed'
+    ));
   }
 });
 
@@ -42,7 +43,9 @@ authRouter.post('/refresh', async (req, res, next): Promise<void> => {
     const data = await refreshSession(input);
     res.json({ success: true, data });
   } catch (error) {
-    next(error);
+    next(error instanceof AuthError ? error : new AuthError(
+      error instanceof Error ? error.message : 'Token refresh failed'
+    ));
   }
 });
 
