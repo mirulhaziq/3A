@@ -25,9 +25,8 @@ import { cariResumeTemplate } from '../templates/cari-resume-template';
 const resumeGenerationRouter = Router();
 
 resumeGenerationRouter.use(authMiddleware);
-resumeGenerationRouter.use(requireRole('JOB_SEEKER'));
 
-resumeGenerationRouter.get('/', async (req, res, next): Promise<void> => {
+resumeGenerationRouter.get('/', requireRole('JOB_SEEKER'), async (req, res, next): Promise<void> => {
   try {
     const input = resumeListQuerySchema.parse(req.query);
     const data = await listGeneratedResumesForUser(req.user.id, input);
@@ -37,11 +36,11 @@ resumeGenerationRouter.get('/', async (req, res, next): Promise<void> => {
   }
 });
 
-resumeGenerationRouter.get('/template', (_req, res): void => {
+resumeGenerationRouter.get('/template', requireRole('JOB_SEEKER'), (_req, res): void => {
   res.json({ success: true, data: { template: cariResumeTemplate } });
 });
 
-resumeGenerationRouter.post('/parse', uploadCV, async (req, res, next): Promise<void> => {
+resumeGenerationRouter.post('/parse', requireRole('JOB_SEEKER'), uploadCV, async (req, res, next): Promise<void> => {
   try {
     if (!req.file) {
       throw new Error('Resume file is required');
@@ -73,7 +72,7 @@ resumeGenerationRouter.post('/parse', uploadCV, async (req, res, next): Promise<
   }
 });
 
-resumeGenerationRouter.post('/enhance-bullets', async (req, res, next): Promise<void> => {
+resumeGenerationRouter.post('/enhance-bullets', requireRole('JOB_SEEKER'), async (req, res, next): Promise<void> => {
   try {
     const { bullets, jobDescription } = req.body as {
       bullets: string[];
@@ -90,7 +89,7 @@ resumeGenerationRouter.post('/enhance-bullets', async (req, res, next): Promise<
   }
 });
 
-resumeGenerationRouter.post('/import-from-cv', async (req, res, next): Promise<void> => {
+resumeGenerationRouter.post('/import-from-cv', requireRole('JOB_SEEKER'), async (req, res, next): Promise<void> => {
   try {
     const parsed = await importProfileFromStoredCv(req.user.id);
     res.json({ success: true, data: { parsed } });
@@ -99,7 +98,7 @@ resumeGenerationRouter.post('/import-from-cv', async (req, res, next): Promise<v
   }
 });
 
-resumeGenerationRouter.post('/enhance-section', async (req, res, next): Promise<void> => {
+resumeGenerationRouter.post('/enhance-section', requireRole('JOB_SEEKER'), async (req, res, next): Promise<void> => {
   try {
     const { sectionType, content, context } = req.body as {
       sectionType: 'summary' | 'experience_bullets' | 'project_bullets';
@@ -117,7 +116,7 @@ resumeGenerationRouter.post('/enhance-section', async (req, res, next): Promise<
   }
 });
 
-resumeGenerationRouter.post('/generate', async (req, res, next): Promise<void> => {
+resumeGenerationRouter.post('/generate', requireRole('JOB_SEEKER'), async (req, res, next): Promise<void> => {
   try {
     const input = resumeGenerationRequestSchema.parse(req.body);
     const resume = await generateResumeForUser(req.user.id, input);
@@ -127,7 +126,7 @@ resumeGenerationRouter.post('/generate', async (req, res, next): Promise<void> =
   }
 });
 
-resumeGenerationRouter.get('/:id', async (req, res, next): Promise<void> => {
+resumeGenerationRouter.get('/:id', requireRole('JOB_SEEKER'), async (req, res, next): Promise<void> => {
   try {
     const { id } = resumeIdParamSchema.parse(req.params);
     const resume = await getGeneratedResumeForUser(req.user.id, id);
@@ -137,7 +136,7 @@ resumeGenerationRouter.get('/:id', async (req, res, next): Promise<void> => {
   }
 });
 
-resumeGenerationRouter.patch('/:id', async (req, res, next): Promise<void> => {
+resumeGenerationRouter.patch('/:id', requireRole('JOB_SEEKER'), async (req, res, next): Promise<void> => {
   try {
     const { id } = resumeIdParamSchema.parse(req.params);
     const input = updateGeneratedResumeSchema.parse(req.body);
