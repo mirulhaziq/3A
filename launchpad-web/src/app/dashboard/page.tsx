@@ -170,6 +170,7 @@ export default function DashboardPage() {
   const [toastXP, setToastXP] = useState(0);
   const [showToast, setShowToast] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
+  const [greeting, setGreeting] = useState('');
   const [dashboardUser, setDashboardUser] = useState<DashboardUser>(MOCK_USER);
   const [applications, setApplications] = useState<DashboardApplication[]>([]);
   const [skillPhases, setSkillPhases] = useState([
@@ -178,6 +179,8 @@ export default function DashboardPage() {
     { name: 'Advanced', done: 0, total: 4 },
     { name: 'Job Ready', done: 0, total: 4 },
   ]);
+
+  useEffect(() => { setGreeting(getGreeting()); }, []);
 
   useEffect(() => {
     let active = true;
@@ -337,7 +340,7 @@ export default function DashboardPage() {
               FOUNDATION PHASE
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#FFFFFF', marginTop: 4 }}>
-              {getGreeting()}, {dashboardUser.name}! 👋
+              {greeting || 'Hello'}, {dashboardUser.name}! 👋
             </div>
           </div>
           <Link
@@ -385,7 +388,7 @@ export default function DashboardPage() {
           {/* Mobile greeting */}
           <div className="lg:hidden" style={{ marginBottom: 24 }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#1A1A1A' }}>
-              {getGreeting()}, {dashboardUser.name}! 👋
+              {greeting || 'Hello'}, {dashboardUser.name}! 👋
             </div>
             <div style={{ fontSize: 13, color: '#6B6B6B', marginTop: 4 }}>
               Foundation Phase · Keep it up!
