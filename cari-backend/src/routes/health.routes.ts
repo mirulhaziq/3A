@@ -12,6 +12,7 @@ healthRouter.get('/', (_req, res) => {
       status: 'ok',
       environment: env.NODE_ENV,
       timestamp: new Date().toISOString(),
+      build: 'v458fb13',
     },
   });
 });
